@@ -4,13 +4,15 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.Circuit
 import com.example.domain.model.CircuitRelation
-import com.example.domain.model.ExplicitForecast
 import com.example.domain.model.FixedScheduleRule
 import com.example.domain.model.ManualException
+import com.example.domain.model.RelationType
+import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduleType
@@ -25,88 +27,102 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import java.util.UUID
 
-enum class AdminTab(val label: String) {
-    CIRCUITS("Circuitos"),
+enum class CircuitsPrimaryTab(val label: String) {
+    CIRCUIT_EDITOR("Edición de circuitos"),
+    PROGRAMMING("Programación")
+}
+
+enum class ProgrammingSubTab(val label: String) {
+    CYCLES("Ciclos"),
     GROUPS("Grupos"),
     FIXED("Fijos"),
-    FORECASTS("Pronósticos"),
     EXCEPTIONS("Excepciones"),
     RELATIONS("Relaciones")
 }
 
 data class CircuitsAdminUiState(
-    val activeTab: AdminTab = AdminTab.CIRCUITS,
+    val primaryTab: CircuitsPrimaryTab = CircuitsPrimaryTab.CIRCUIT_EDITOR,
+    val programmingSubTab: ProgrammingSubTab = ProgrammingSubTab.CYCLES,
     val searchQuery: String = "",
     val selectedGroupFilterId: String? = null,
     val favoritesOnly: Boolean = false,
     val showInactive: Boolean = true,
     val circuits: List<Circuit> = emptyList(),
     val allCircuits: List<Circuit> = emptyList(),
+    val cycles: List<RotationCycle> = emptyList(),
     val groups: List<ScheduleGroup> = emptyList(),
     val fixedRules: List<FixedScheduleRule> = emptyList(),
-    val explicitForecasts: List<ExplicitForecast> = emptyList(),
     val manualExceptions: List<ManualException> = emptyList(),
     val relations: List<CircuitRelation> = emptyList(),
+    val use24h: Boolean = false,
+    val zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
     val statusMessage: String? = null
 )
 
 class CircuitsViewModel(
     private val appContext: Context,
-    private val repository: LuzIslaRepository
+    private val repository: LuzIslaRepository,
+    private val prefsRepo: UserPreferencesRepository
 ) : ViewModel() {
 
-    private val activeTab = MutableStateFlow(AdminTab.CIRCUITS)
+    private val primaryTab = MutableStateFlow(CircuitsPrimaryTab.CIRCUIT_EDITOR)
+    private val programmingSubTab = MutableStateFlow(ProgrammingSubTab.CYCLES)
     private val searchQuery = MutableStateFlow("")
     private val selectedGroupFilterId = MutableStateFlow<String?>(null)
     private val favoritesOnly = MutableStateFlow(false)
     private val showInactive = MutableStateFlow(true)
     private val statusMessage = MutableStateFlow<String?>(null)
 
-    val uiState: StateFlow<CircuitsAdminUiState> = combine(
-        repository.snapshotFlow,
-        activeTab,
+    private val filterControlsFlow = combine(
+        primaryTab,
+        programmingSubTab,
         searchQuery,
         selectedGroupFilterId,
-        favoritesOnly,
+        favoritesOnly
+    ) { pTab, subTab, query, grpId, fav ->
+        FilterControls(pTab, subTab, query, grpId, fav)
+    }
+
+    val uiState: StateFlow<CircuitsAdminUiState> = combine(
+        repository.snapshotFlow,
+        prefsRepo.preferencesFlow,
+        filterControlsFlow,
         showInactive,
         statusMessage
-    ) { values ->
-        val snapshot = values[0] as ScheduleSnapshot
-        val tab = values[1] as AdminTab
-        val query = values[2] as String
-        val groupId = values[3] as String?
-        val favOnly = values[4] as Boolean
-        val showInact = values[5] as Boolean
-        val msg = values[6] as String?
-
+    ) { snapshot, prefs, controls, showInact, msg ->
+        val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
         val filteredCircuits = snapshot.circuits
             .filter { c ->
                 val matchesActive = showInact || c.isActive
-                val matchesFav = !favOnly || c.isFavorite || c.isPrimaryHome
-                val matchesGroup = groupId == null || c.groupId == groupId
-                val matchesQuery = query.isBlank() ||
-                    c.code.contains(query, ignoreCase = true) ||
-                    c.customName.contains(query, ignoreCase = true) ||
-                    c.comment.contains(query, ignoreCase = true)
+                val matchesFav = !controls.favoritesOnly || c.isFavorite || c.isPrimaryHome
+                val matchesGroup = controls.selectedGroupFilterId == null || c.groupId == controls.selectedGroupFilterId
+                val matchesQuery = controls.searchQuery.isBlank() ||
+                    c.code.contains(controls.searchQuery, ignoreCase = true) ||
+                    c.customName.contains(controls.searchQuery, ignoreCase = true) ||
+                    c.comment.contains(controls.searchQuery, ignoreCase = true)
                 matchesActive && matchesFav && matchesGroup && matchesQuery
             }
             .sortedWith(compareBy<Circuit> { !it.isActive }.thenBy { it.displayOrder }.thenBy { it.code })
 
         CircuitsAdminUiState(
-            activeTab = tab,
-            searchQuery = query,
-            selectedGroupFilterId = groupId,
-            favoritesOnly = favOnly,
+            primaryTab = controls.primaryTab,
+            programmingSubTab = controls.programmingSubTab,
+            searchQuery = controls.searchQuery,
+            selectedGroupFilterId = controls.selectedGroupFilterId,
+            favoritesOnly = controls.favoritesOnly,
             showInactive = showInact,
             circuits = filteredCircuits,
             allCircuits = snapshot.circuits,
+            cycles = snapshot.cycles,
             groups = snapshot.groups,
             fixedRules = snapshot.fixedRules,
-            explicitForecasts = snapshot.explicitForecasts.sortedByDescending { it.dateEpochDay },
             manualExceptions = snapshot.manualExceptions.sortedByDescending { it.dateEpochDay },
             relations = snapshot.relations,
+            use24h = prefs.use24HourFormat,
+            zoneId = zoneId,
             statusMessage = msg
         )
     }.stateIn(
@@ -115,8 +131,12 @@ class CircuitsViewModel(
         initialValue = CircuitsAdminUiState()
     )
 
-    fun selectTab(tab: AdminTab) {
-        activeTab.value = tab
+    fun selectPrimaryTab(tab: CircuitsPrimaryTab) {
+        primaryTab.value = tab
+    }
+
+    fun selectProgrammingSubTab(subTab: ProgrammingSubTab) {
+        programmingSubTab.value = subTab
     }
 
     fun updateSearch(query: String) {
@@ -210,7 +230,7 @@ class CircuitsViewModel(
         }
     }
 
-    fun saveGroup(
+    fun saveCycle(
         id: String?,
         name: String,
         description: String,
@@ -220,35 +240,98 @@ class CircuitsViewModel(
         outageMinutes: Int,
         refDateStr: String,
         refTimeStr: String,
-        phaseOffsetMinutes: Int
+        orderedGroupIds: List<String>,
+        isActive: Boolean
+    ) {
+        val cleanName = name.trim()
+        if (cleanName.isEmpty()) {
+            statusMessage.value = "El nombre del ciclo es obligatorio."
+            return
+        }
+        val svcTotal = (serviceHours * 60 + serviceMinutes).coerceAtLeast(15)
+        val outTotal = (outageHours * 60 + outageMinutes).coerceAtLeast(15)
+        val zone = uiState.value.zoneId
+        val refMillis = parseDateTimeMillis(refDateStr, refTimeStr, zone) ?: run {
+            statusMessage.value = "Fecha u hora de referencia inválida (usa AAAA-MM-DD y HH:mm)."
+            return
+        }
+
+        val cycle = RotationCycle(
+            id = id ?: "cyc_${UUID.randomUUID().toString().take(8)}",
+            name = cleanName,
+            description = description.trim(),
+            serviceDurationMinutes = svcTotal,
+            outageDurationMinutes = outTotal,
+            referenceEpochMillis = refMillis,
+            orderedGroupIds = orderedGroupIds,
+            isActive = isActive
+        )
+
+        viewModelScope.launch {
+            repository.upsertCycle(cycle)
+            refreshSystemHooks()
+            val extraNote = if (orderedGroupIds.size > cycle.maxGroupsSupported) {
+                " (afectación ajustada a ${cycle.effectiveOutageMinutes / 60}h para rotar ${orderedGroupIds.size} grupos)"
+            } else {
+                ""
+            }
+            statusMessage.value = "Ciclo \"$cleanName\" guardado y aplicado a ${orderedGroupIds.size} grupo(s)$extraNote."
+        }
+    }
+
+    fun deleteCycle(id: String) {
+        viewModelScope.launch {
+            repository.deleteCycle(id)
+            refreshSystemHooks()
+            statusMessage.value = "Ciclo eliminado."
+        }
+    }
+
+    fun saveGroup(
+        id: String?,
+        name: String,
+        description: String,
+        selectedCircuitCodes: Set<String>
     ) {
         val cleanName = name.trim()
         if (cleanName.isEmpty()) {
             statusMessage.value = "El nombre del grupo es obligatorio."
             return
         }
-        val svcTotal = (serviceHours * 60 + serviceMinutes).coerceAtLeast(15)
-        val outTotal = (outageHours * 60 + outageMinutes).coerceAtLeast(15)
-        val refMillis = parseDateTimeMillis(refDateStr, refTimeStr) ?: run {
-            statusMessage.value = "Fecha u hora de referencia inválida (usa AAAA-MM-DD y HH:mm)."
-            return
-        }
+        val existing = id?.let { gid -> uiState.value.groups.firstOrNull { it.id == gid } }
+        val groupId = id ?: "grp_${UUID.randomUUID().toString().take(8)}"
+        val defaultRef = LocalDate.now(uiState.value.zoneId)
+            .atStartOfDay(uiState.value.zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        val group = existing?.copy(
+            name = cleanName,
+            description = description.trim()
+        ) ?: ScheduleGroup(
+            id = groupId,
+            name = cleanName,
+            description = description.trim(),
+            serviceDurationMinutes = 240,
+            outageDurationMinutes = 720,
+            referenceEpochMillis = defaultRef,
+            phaseOffsetMinutes = 0,
+            isActive = true
+        )
 
         viewModelScope.launch {
-            repository.upsertGroup(
-                ScheduleGroup(
-                    id = id ?: "grp_${UUID.randomUUID().toString().take(8)}",
-                    name = cleanName,
-                    description = description.trim(),
-                    serviceDurationMinutes = svcTotal,
-                    outageDurationMinutes = outTotal,
-                    referenceEpochMillis = refMillis,
-                    phaseOffsetMinutes = phaseOffsetMinutes,
-                    isActive = true
-                )
-            )
+            repository.upsertGroup(group)
+            repository.updateGroupMembers(group.id, selectedCircuitCodes)
             refreshSystemHooks()
-            statusMessage.value = "Grupo \"$cleanName\" guardado."
+            statusMessage.value = "Grupo \"$cleanName\" guardado (${selectedCircuitCodes.size} circuito(s))."
+        }
+    }
+
+    fun updateGroupMembers(groupId: String, selectedCodes: Set<String>) {
+        viewModelScope.launch {
+            repository.updateGroupMembers(groupId, selectedCodes)
+            refreshSystemHooks()
+            statusMessage.value = "Circuitos del grupo actualizados (${selectedCodes.size})."
         }
     }
 
@@ -270,6 +353,10 @@ class CircuitsViewModel(
         validToStr: String,
         label: String
     ) {
+        if (circuitCode.isBlank()) {
+            statusMessage.value = "Selecciona un circuito para el horario fijo."
+            return
+        }
         val startMin = parseTimeMinutes(startTimeStr)
         val endMin = parseTimeMinutes(endTimeStr)
         if (startMin == null || endMin == null) {
@@ -313,55 +400,6 @@ class CircuitsViewModel(
     fun deleteFixedRule(id: String) {
         viewModelScope.launch {
             repository.deleteFixedRule(id)
-            refreshSystemHooks()
-        }
-    }
-
-    fun saveExplicitForecast(
-        id: String?,
-        dateStr: String,
-        startTimeStr: String,
-        endTimeStr: String,
-        circuitsCsv: String,
-        intervalKind: com.example.domain.model.IntervalKind,
-        notes: String
-    ) {
-        val date = runCatching { LocalDate.parse(dateStr.trim()) }.getOrNull() ?: run {
-            statusMessage.value = "Fecha inválida (usa AAAA-MM-DD)."
-            return
-        }
-        val startMin = parseTimeMinutes(startTimeStr)
-        val endMin = parseTimeMinutes(endTimeStr)
-        if (startMin == null || endMin == null) {
-            statusMessage.value = "Hora inválida (usa HH:mm)."
-            return
-        }
-        val codes = circuitsCsv.split(",", " ").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
-        if (codes.isEmpty()) {
-            statusMessage.value = "Indica al menos un código de circuito."
-            return
-        }
-        viewModelScope.launch {
-            repository.upsertExplicitForecast(
-                ExplicitForecast(
-                    id = id ?: "fc_${UUID.randomUUID().toString().take(8)}",
-                    dateEpochDay = date.toEpochDay(),
-                    startMinuteOfDay = startMin,
-                    endMinuteOfDay = endMin,
-                    circuitCodes = codes,
-                    intervalKind = intervalKind,
-                    notes = notes.trim(),
-                    isHistoricalTest = false
-                )
-            )
-            refreshSystemHooks()
-            statusMessage.value = "Pronóstico guardado para ${ScheduleEngine.formatShortDate(date)}."
-        }
-    }
-
-    fun deleteExplicitForecast(id: String) {
-        viewModelScope.launch {
-            repository.deleteExplicitForecast(id)
             refreshSystemHooks()
         }
     }
@@ -413,7 +451,7 @@ class CircuitsViewModel(
         id: String?,
         sourceCode: String,
         targetCode: String,
-        type: com.example.domain.model.RelationType,
+        type: RelationType,
         syncEnabled: Boolean,
         notes: String
     ) {
@@ -461,15 +499,23 @@ class CircuitsViewModel(
         return h * 60 + m
     }
 
-    private fun parseDateTimeMillis(dateStr: String, timeStr: String): Long? {
+    private fun parseDateTimeMillis(dateStr: String, timeStr: String, zoneId: ZoneId): Long? {
         val date = runCatching { LocalDate.parse(dateStr.trim()) }.getOrNull() ?: return null
         val mins = parseTimeMinutes(timeStr) ?: return null
         val safeMins = mins.coerceIn(0, 1439)
         return date.atTime(LocalTime.of(safeMins / 60, safeMins % 60))
-            .atZone(ScheduleEngine.HAVANA_ZONE)
+            .atZone(zoneId)
             .toInstant()
             .toEpochMilli()
     }
+
+    private data class FilterControls(
+        val primaryTab: CircuitsPrimaryTab,
+        val programmingSubTab: ProgrammingSubTab,
+        val searchQuery: String,
+        val selectedGroupFilterId: String?,
+        val favoritesOnly: Boolean
+    )
 
     companion object {
         fun formatMinute24h(minuteOfDay: Int): String {
@@ -478,22 +524,23 @@ class CircuitsViewModel(
             return String.format("%02d:%02d", clamped / 60, clamped % 60)
         }
 
-        fun formatEpochDateStr(epochMillis: Long): String =
-            Instant.ofEpochMilli(epochMillis).atZone(ScheduleEngine.HAVANA_ZONE).toLocalDate().toString()
+        fun formatEpochDateStr(epochMillis: Long, zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE): String =
+            Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalDate().toString()
 
-        fun formatEpochTime24Str(epochMillis: Long): String {
-            val lt = Instant.ofEpochMilli(epochMillis).atZone(ScheduleEngine.HAVANA_ZONE).toLocalTime()
+        fun formatEpochTime24Str(epochMillis: Long, zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE): String {
+            val lt = Instant.ofEpochMilli(epochMillis).atZone(zoneId).toLocalTime()
             return String.format("%02d:%02d", lt.hour, lt.minute)
         }
     }
 
     class Factory(
         private val context: Context,
-        private val repository: LuzIslaRepository
+        private val repository: LuzIslaRepository,
+        private val prefsRepo: UserPreferencesRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CircuitsViewModel(context.applicationContext, repository) as T
+            return CircuitsViewModel(context.applicationContext, repository, prefsRepo) as T
         }
     }
 }

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
+import com.example.ui.components.Continuous3DTickerTimeline
 import com.example.ui.components.Timeline24hBar
 import com.example.ui.components.TimelineIntervalsSummaryList
 import com.example.ui.components.TimelineSegmentDetailCard
@@ -57,8 +57,8 @@ fun CalendarScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val statusColors = LocalElectricStatusColors.current
-    val today = remember { LocalDate.now(ScheduleEngine.HAVANA_ZONE) }
-    val nowMillis = remember(state.selectedDate) {
+    val today = remember(state.zoneId) { LocalDate.now(state.zoneId) }
+    val nowMillis = remember(state.selectedDate, today) {
         if (state.selectedDate == today) System.currentTimeMillis() else null
     }
 
@@ -76,12 +76,11 @@ fun CalendarScreen(
             item(key = "calendar_header") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Calendario y Línea de Tiempo 24h",
+                        text = "Calendario y Línea de Tiempo",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
 
-                    // Date navigation bar
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -123,7 +122,6 @@ fun CalendarScreen(
                         }
                     }
 
-                    // Quick date shortcuts (7 days + Nov 19-20 historical test)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -155,7 +153,6 @@ fun CalendarScreen(
                         )
                     }
 
-                    // View mode chips + favorites toggle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -182,18 +179,23 @@ fun CalendarScreen(
                 }
             }
 
-            // Selected segment detail callout
-            state.selectedSegment?.let { seg ->
-                item(key = "selected_segment_detail") {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (state.selectedSegmentOwner.isNotBlank()) {
-                            Text(
-                                text = "Detalle seleccionado — ${state.selectedSegmentOwner}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+            if (state.viewMode != CalendarViewMode.BY_CIRCUIT) {
+                state.selectedSegment?.let { seg ->
+                    item(key = "selected_segment_detail") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (state.selectedSegmentOwner.isNotBlank()) {
+                                Text(
+                                    text = "Detalle seleccionado — ${state.selectedSegmentOwner}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            TimelineSegmentDetailCard(
+                                segment = seg,
+                                use24h = state.use24h,
+                                zoneId = state.zoneId
                             )
                         }
-                        TimelineSegmentDetailCard(segment = seg)
                     }
                 }
             }
@@ -210,7 +212,12 @@ fun CalendarScreen(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectCircuit(row.circuit.code)
+                                    viewModel.selectViewMode(CalendarViewMode.BY_CIRCUIT)
+                                }
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -226,13 +233,20 @@ fun CalendarScreen(
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    if (row.circuit.isFavorite) {
-                                        Icon(
-                                            Icons.Filled.Star,
-                                            contentDescription = "Favorito",
-                                            tint = statusColors.favorite,
-                                            modifier = Modifier.size(16.dp)
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = "Ver 3D",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
                                         )
+                                        if (row.circuit.isFavorite) {
+                                            Icon(
+                                                Icons.Filled.Star,
+                                                contentDescription = "Favorito",
+                                                tint = statusColors.favorite,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 Timeline24hBar(
@@ -240,6 +254,8 @@ fun CalendarScreen(
                                     segments = row.segments,
                                     barHeight = 28.dp,
                                     currentTimeMillis = nowMillis,
+                                    use24h = state.use24h,
+                                    zoneId = state.zoneId,
                                     selectedSegment = if (state.selectedSegmentOwner == row.circuit.displayTitle()) state.selectedSegment else null,
                                     onSegmentTap = { seg ->
                                         viewModel.selectSegment(row.circuit.displayTitle(), seg)
@@ -272,6 +288,15 @@ fun CalendarScreen(
                             CircuitTimelineRow(c, state.weeklyTimeline[state.selectedDate].orEmpty())
                         }
                     if (selectedRow != null) {
+                        item(key = "continuous_3d_wheel") {
+                            Continuous3DTickerTimeline(
+                                circuitCode = selectedRow.circuit.code,
+                                snapshot = state.snapshot,
+                                nowMillis = System.currentTimeMillis(),
+                                use24h = state.use24h,
+                                zoneId = state.zoneId
+                            )
+                        }
                         item(key = "individual_timeline_card") {
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
@@ -284,7 +309,7 @@ fun CalendarScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = "Línea de tiempo individual: ${selectedRow.circuit.displayTitle()}",
+                                        text = "Detalle del día: ${selectedRow.circuit.displayTitle()}",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -293,6 +318,8 @@ fun CalendarScreen(
                                         segments = selectedRow.segments,
                                         barHeight = 40.dp,
                                         currentTimeMillis = nowMillis,
+                                        use24h = state.use24h,
+                                        zoneId = state.zoneId,
                                         selectedSegment = state.selectedSegment,
                                         onSegmentTap = { seg ->
                                             viewModel.selectSegment(selectedRow.circuit.displayTitle(), seg)
@@ -301,6 +328,8 @@ fun CalendarScreen(
                                     TimelineIntervalsSummaryList(
                                         segments = selectedRow.segments,
                                         selectedSegment = state.selectedSegment,
+                                        use24h = state.use24h,
+                                        zoneId = state.zoneId,
                                         onSelect = { seg ->
                                             viewModel.selectSegment(selectedRow.circuit.displayTitle(), seg)
                                         }
@@ -351,6 +380,8 @@ fun CalendarScreen(
                                     segments = segments,
                                     barHeight = 26.dp,
                                     currentTimeMillis = if (day == today) System.currentTimeMillis() else null,
+                                    use24h = state.use24h,
+                                    zoneId = state.zoneId,
                                     onSegmentTap = { seg ->
                                         viewModel.selectSegment(ScheduleEngine.formatDateEs(day), seg)
                                     }
@@ -402,6 +433,8 @@ fun CalendarScreen(
                                         segments = row.segments,
                                         barHeight = 28.dp,
                                         currentTimeMillis = nowMillis,
+                                        use24h = state.use24h,
+                                        zoneId = state.zoneId,
                                         onSegmentTap = { seg ->
                                             viewModel.selectSegment(row.group.name, seg)
                                         }

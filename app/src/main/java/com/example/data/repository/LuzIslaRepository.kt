@@ -8,6 +8,7 @@ import com.example.data.local.ConfigBackupEntity
 import com.example.data.local.ExplicitForecastEntity
 import com.example.data.local.FixedScheduleRuleEntity
 import com.example.data.local.ManualExceptionEntity
+import com.example.data.local.RotationCycleEntity
 import com.example.data.local.ScheduleGroupEntity
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.domain.model.Circuit
@@ -15,8 +16,10 @@ import com.example.domain.model.CircuitRelation
 import com.example.domain.model.ExplicitForecast
 import com.example.domain.model.FixedScheduleRule
 import com.example.domain.model.ManualException
+import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
+import com.example.domain.model.ScheduleType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -38,23 +41,34 @@ class LuzIslaRepository(
     private val exceptionDao = database.manualExceptionDao()
     private val relationDao = database.circuitRelationDao()
     private val backupDao = database.configBackupDao()
+    private val cycleDao = database.rotationCycleDao()
 
-    val snapshotFlow: Flow<ScheduleSnapshot> = combine(
+    private val baseEntitiesFlow = combine(
         circuitDao.observeAll().map { list -> list.map { it.toDomain() } },
         groupDao.observeAll().map { list -> list.map { it.toDomain() } },
         fixedDao.observeAll().map { list -> list.map { it.toDomain() } },
         forecastDao.observeAll().map { list -> list.map { it.toDomain() } },
-        exceptionDao.observeAll().map { list -> list.map { it.toDomain() } },
-        relationDao.observeAll().map { list -> list.map { it.toDomain() } }
-    ) { values ->
-        @Suppress("UNCHECKED_CAST")
+        exceptionDao.observeAll().map { list -> list.map { it.toDomain() } }
+    ) { circuits, groups, fixed, forecasts, exceptions ->
         ScheduleSnapshot(
-            circuits = values[0] as List<Circuit>,
-            groups = values[1] as List<ScheduleGroup>,
-            fixedRules = values[2] as List<FixedScheduleRule>,
-            explicitForecasts = values[3] as List<ExplicitForecast>,
-            manualExceptions = values[4] as List<ManualException>,
-            relations = values[5] as List<CircuitRelation>
+            circuits = circuits,
+            groups = groups,
+            fixedRules = fixed,
+            explicitForecasts = forecasts,
+            manualExceptions = exceptions,
+            relations = emptyList(),
+            cycles = emptyList()
+        )
+    }
+
+    val snapshotFlow: Flow<ScheduleSnapshot> = combine(
+        baseEntitiesFlow,
+        relationDao.observeAll().map { list -> list.map { it.toDomain() } },
+        cycleDao.observeAll().map { list -> list.map { it.toDomain() } }
+    ) { base, relations, cycles ->
+        base.copy(
+            relations = relations,
+            cycles = cycles
         )
     }
 
@@ -72,7 +86,8 @@ class LuzIslaRepository(
             fixedRules = fixedDao.getAllOnce().map { it.toDomain() },
             explicitForecasts = forecastDao.getAllOnce().map { it.toDomain() },
             manualExceptions = exceptionDao.getAllOnce().map { it.toDomain() },
-            relations = relationDao.getAllOnce().map { it.toDomain() }
+            relations = relationDao.getAllOnce().map { it.toDomain() },
+            cycles = cycleDao.getAllOnce().map { it.toDomain() }
         )
     }
 
@@ -165,14 +180,85 @@ class LuzIslaRepository(
         prefsRepo.markForecastUpdatedNow()
     }
 
+    suspend fun updateGroupMembers(groupId: String, selectedCircuitCodes: Set<String>) {
+        val normalizedSelected = selectedCircuitCodes.map { it.trim().uppercase() }.toSet()
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            val all = circuitDao.getAllOnce()
+            val updated = all.map { entity ->
+                val code = entity.code.uppercase()
+                when {
+                    code in normalizedSelected -> {
+                        entity.copy(
+                            groupId = groupId,
+                            scheduleType = ScheduleType.ROTATING.name,
+                            updatedAt = now
+                        )
+                    }
+                    entity.groupId == groupId -> {
+                        val nextType = if (entity.scheduleType == ScheduleType.ROTATING.name) {
+                            ScheduleType.CUSTOM.name
+                        } else {
+                            entity.scheduleType
+                        }
+                        entity.copy(
+                            groupId = null,
+                            scheduleType = nextType,
+                            updatedAt = now
+                        )
+                    }
+                    else -> entity
+                }
+            }
+            circuitDao.updateAll(updated)
+        }
+        prefsRepo.markForecastUpdatedNow()
+    }
+
     suspend fun deleteGroup(groupId: String) {
         database.withTransaction {
             val updatedCircuits = circuitDao.getAllOnce().map {
                 if (it.groupId == groupId) it.copy(groupId = null) else it
             }
             circuitDao.updateAll(updatedCircuits)
+            val updatedCycles = cycleDao.getAllOnce().map { cycle ->
+                val ids = cycle.orderedGroupIdsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() && it != groupId }
+                cycle.copy(orderedGroupIdsCsv = ids.joinToString(","))
+            }
+            cycleDao.upsertAll(updatedCycles)
             groupDao.deleteById(groupId)
         }
+        prefsRepo.markForecastUpdatedNow()
+    }
+
+    suspend fun upsertCycle(cycle: RotationCycle) {
+        val cleanedIds = cycle.orderedGroupIds.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val normalizedCycle = cycle.copy(orderedGroupIds = cleanedIds)
+        val effectiveOutage = normalizedCycle.effectiveOutageMinutes
+
+        database.withTransaction {
+            cycleDao.upsert(RotationCycleEntity.fromDomain(normalizedCycle))
+            if (cleanedIds.isNotEmpty()) {
+                val existingGroups = groupDao.getAllOnce().associateBy { it.id }
+                val syncedGroups = cleanedIds.mapIndexedNotNull { index, gid ->
+                    existingGroups[gid]?.copy(
+                        serviceDurationMinutes = normalizedCycle.serviceDurationMinutes,
+                        outageDurationMinutes = effectiveOutage,
+                        referenceEpochMillis = normalizedCycle.referenceEpochMillis,
+                        phaseOffsetMinutes = index * normalizedCycle.serviceDurationMinutes,
+                        isActive = normalizedCycle.isActive
+                    )
+                }
+                if (syncedGroups.isNotEmpty()) {
+                    groupDao.upsertAll(syncedGroups)
+                }
+            }
+        }
+        prefsRepo.markForecastUpdatedNow()
+    }
+
+    suspend fun deleteCycle(cycleId: String) {
+        cycleDao.deleteById(cycleId)
         prefsRepo.markForecastUpdatedNow()
     }
 
@@ -241,6 +327,7 @@ class LuzIslaRepository(
             when (mode) {
                 ImportMergeMode.MERGE_KEEP_PERSONAL -> {
                     groupDao.upsertAll(incoming.groups.map { ScheduleGroupEntity.fromDomain(it) })
+                    cycleDao.upsertAll(incoming.cycles.map { RotationCycleEntity.fromDomain(it) })
                     val mergedCircuits = incoming.circuits.mapIndexed { idx, inc ->
                         val code = inc.code.trim().uppercase()
                         val local = existingCircuits[code]
@@ -282,6 +369,7 @@ class LuzIslaRepository(
                 ImportMergeMode.REPLACE_ALL_INCLUDING_PERSONAL -> {
                     val keepPersonal = mode == ImportMergeMode.REPLACE_SCHEDULE_KEEP_PERSONAL && !includePersonalFromIncoming
                     groupDao.deleteAll()
+                    cycleDao.deleteAll()
                     fixedDao.deleteAll()
                     forecastDao.deleteAll()
                     exceptionDao.deleteAll()
@@ -289,6 +377,7 @@ class LuzIslaRepository(
                     circuitDao.deleteAll()
 
                     groupDao.upsertAll(incoming.groups.map { ScheduleGroupEntity.fromDomain(it) })
+                    cycleDao.upsertAll(incoming.cycles.map { RotationCycleEntity.fromDomain(it) })
                     val replacedCircuits = incoming.circuits.mapIndexed { idx, inc ->
                         val code = inc.code.trim().uppercase()
                         val local = existingCircuits[code]

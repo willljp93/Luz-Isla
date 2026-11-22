@@ -13,7 +13,7 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
 3. [Arquitectura del proyecto](#arquitectura-del-proyecto)
 4. [Motor de cálculo de horarios](#motor-de-cálculo-de-horarios)
 5. [Formato JSON de configuración (`configuracion.json`)](#formato-json-de-configuración-configuracionjson)
-6. [Formato de código alfanumérico (`LUZ1-`) y QR multiparte (`LUZ1P|`)](#formato-de-código-alfanumérico-luz1--y-qr-multiparte-luz1p)
+6. [Formato de código alfanumérico (`LUZ1-`)](#formato-de-código-alfanumérico-luz1-)
 7. [Limitaciones de App Widgets en Android](#limitaciones-de-app-widgets-en-android)
 8. [Compilación y generación de APKs](#compilación-y-generación-de-apks)
 9. [Pruebas unitarias y de integración](#pruebas-unitarias-y-de-integración)
@@ -23,30 +23,29 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
 
 ## Características principales
 
-- **Pantalla de inicio prioritaria**: reloj en vivo (`America/Havana`), resumen general, favoritos y vivienda principal destacados al principio, cuenta regresiva en vivo hacia el próximo cambio, búsqueda rápida por código/nombre/reparto, filtros por estado y alternancia entre tarjetas y vista compacta.
-- **Línea de tiempo visual de 24 horas**: barras proporcionales interactivas (modalidad **individual** y **comparativa** multifila con filtro de favoritos), manejo exacto de cruces de medianoche e inspección de segmentos al tocarlos.
-- **Calendario completo**: vista diaria, semanal (próximos 7 días), por circuito y vista general de grupos. Indica explícitamente cuando una fecha no posee pronóstico sin inventar horarios.
-- **Catálogo completamente dinámico (Room SQLite)**: sin límite fijo de circuitos ni grupos. Permite crear, editar, reordenar, desactivar/recuperar y eliminar circuitos, asignar nombres y comentarios locales, configurar horarios fijos, grupos rotativos arbitrarios (4h/12h, 3h/9h, 6h/18h, etc.), pronósticos explícitos por fecha, excepciones manuales y relaciones entre circuitos.
-- **Transferencia offline (WhatsApp / Telegram / QR / JSON)**:
+- **Asistente inicial y Ajustes flexibles**: flujo de bienvenida configurable (apariencia claro/oscuro/sistema, zona horaria automática del sistema o manual, formato 12h AM/PM o 24h), con indicador visible de versión y fecha/hora de la configuración activa, ajuste de amanecer/atardecer, animaciones sutiles opcionales e ícono dinámico del lanzador vinculado a *Mi vivienda*.
+- **Pantalla de inicio prioritaria**: reloj en vivo en la zona horaria elegida, indicador sutil de día/noche, emblema Isla de la Juventud reactivo, resumen general, favoritos y vivienda principal destacados al principio, cuenta regresiva en vivo hacia el próximo cambio, búsqueda rápida y filtros por estado.
+- **Línea de tiempo visual de 24 horas y Rueda 3D continua**: barras proporcionales interactivas y línea de tiempo cilíndrica 3D sin fin para desplazarse por días pasados y futuros con precisión al minuto.
+- **Calendario completo**: vista diaria, semanal (próximos 7 días), por circuito (con línea de tiempo 3D) y vista general de grupos. Indica explícitamente cuando una fecha no posee pronóstico sin inventar horarios.
+- **Gestión clara de Circuitos, Ciclos, Grupos y Fijos**: sección dividida en **Edición de circuitos** y **Programación** (Ciclos de rotación con cálculo automático de desplazamientos, Grupos con selector múltiple, Horarios Fijos con insignias `L M X J V S D` y buscador emergente, Excepciones y Relaciones).
+- **Transferencia offline (WhatsApp / Telegram / JSON)**:
   - Códigos alfanuméricos compactos `LUZ1-...` con compresión Deflate, Base32 Crockford y suma de verificación SHA-256.
-  - Generación y escaneo de QR 100 % sin conexión (CameraX + ZXing Core), con división automática en **QR multiparte numerado** cuando la configuración es grande (nunca trunca datos).
-- **Sincronización HTTPS opcional (WorkManager)**: descarga manual o periódica desde cualquier archivo JSON publicado en HTTPS, con respaldo automático previo y preservación de favoritos, nombres y comentarios locales.
-- **Notificaciones locales anticipadas**: avisos configurables (5, 10, 15 o 30 min) para inicio, fin y restablecimiento de servicio, reprogramados automáticamente tras reinicio o cambio de zona horaria.
-- **Widgets de pantalla de inicio**: variante compacta para el favorito principal y variante configurable por circuito.
-- **Compartir**: texto formateado para WhatsApp/Telegram e imagen resumen generada localmente.
+  - Exportación e importación directa mediante archivo `.json` con respaldo automático previo y preservación de favoritos, nombres y comentarios locales.
+- **Sincronización HTTPS opcional (WorkManager)**: descarga manual o periódica desde cualquier archivo JSON publicado en HTTPS, registrando versión y fecha de carga.
+- **Notificaciones locales anticipadas y Widgets**: avisos configurables (5, 10, 15 o 30 min) y widgets compactos o por circuito para la pantalla de inicio.
 
 ---
 
 ## Compatibilidad y requisitos
 
-- **Android mínimo**: Android 7.0 Nougat (**API 24**) en el paquete para Google Play (requerido por *Play automatic protection*; compatible con API 23 en compilaciones locales manuales sin Play Store).
+- **Android mínimo**: Android 7.0 Nougat (**API 24**) en el paquete para Google Play (requerido por *Play automatic protection*).
 - **SDK objetivo / compilación**: API **36**.
 - **Arquitecturas soportadas**:
   - Universal (`universal`)
   - ARM 32 bits (`armeabi-v7a`)
   - ARM 64 bits (`arm64-v8a`)
-- **Sin dependencia de Google Play Services**: no utiliza Firebase, AdMob ni ML Kit remoto.
-- **Tecnologías**: Kotlin, Jetpack Compose (Material Design 3), MVVM, Coroutines/StateFlow, Room (KSP), DataStore Preferences, WorkManager, CameraX + ZXing Core, `desugar_jdk_libs` para `java.time`.
+- **Sin dependencia de Google Play Services**: no utiliza Firebase, AdMob ni permisos sensibles de cámara/almacenamiento.
+- **Tecnologías**: Kotlin, Jetpack Compose (Material Design 3), MVVM, Coroutines/StateFlow, Room (KSP, esquema v2 con migración `1->2`), DataStore Preferences, WorkManager y `desugar_jdk_libs` para `java.time`.
 
 ---
 
@@ -55,20 +54,20 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
 ```text
 app/src/main/java/com/example/
 ├── domain/
-│   ├── model/         # Modelos inmutables de dominio (Circuit, ScheduleGroup, etc.)
-│   └── engine/        # ScheduleEngine puro en Kotlin (America/Havana)
+│   ├── model/         # Modelos inmutables (Circuit, RotationCycle, ScheduleGroup, etc.)
+│   └── engine/        # ScheduleEngine puro en Kotlin (zona horaria e idioma configurables)
 ├── data/
-│   ├── local/         # Entidades Room, DAOs, AppDatabase y SeedDataProvider
-│   ├── preferences/   # DataStore Preferences (tema, sync, notificaciones, widgets)
-│   └── repository/    # LuzIslaRepository (transacciones, backups y merge seguro)
-├── transfer/          # CrockfordBase32, ConfigCodec, MultiPartQrCollector, QrCodeUtils
+│   ├── local/         # Entidades Room, DAOs, AppDatabase (v2) y SeedDataProvider
+│   ├── preferences/   # DataStore Preferences (onboarding, zona, 24h, día/noche, ícono, sync)
+│   └── repository/    # LuzIslaRepository (transacciones, ciclos, backups y merge seguro)
+├── transfer/          # CrockfordBase32, ConfigCodec (JSON + LUZ1-)
 ├── sync/              # HttpsSyncManager, ForecastSyncWorker, ShareHelper
 ├── notifications/     # ScheduleNotificationManager y BroadcastReceivers
-├── widget/            # AppWidgetProviders, WidgetConfigActivity y WidgetRefreshWorker
+├── widget/            # AppWidgetProviders, WidgetConfigActivity, LauncherIconManager
 └── ui/
     ├── theme/         # Tema M3 "Solar & Isla", fuentes locales y tokens semánticos
-    ├── components/    # Timeline24hBar, CircuitDetailBottomSheet, QrScannerDialog
-    └── screens/       # Home, Calendar, Circuits (Admin) y Settings
+    ├── components/    # Timeline24hBar, Continuous3DTickerTimeline, DayNightBackdrop, IslaEmblemBadge
+    └── screens/       # Onboarding, Home, Calendar, Circuits y Settings
 ```
 
 ---
@@ -170,19 +169,12 @@ La aplicación puede importar, exportar y sincronizar archivos JSON con el sigui
 
 ---
 
-## Formato de código alfanumérico (`LUZ1-`) y QR multiparte (`LUZ1P|`)
+## Formato de código alfanumérico (`LUZ1-`)
 
 1. **Serialización**: convierte el payload a JSON compacto UTF-8.
 2. **Integridad**: calcula el SHA-256 de los bytes JSON y toma los primeros **4 bytes** como firma de integridad binaria.
 3. **Compresión**: comprime los bytes JSON usando `Deflate` (`BEST_COMPRESSION`).
 4. **Envoltura y codificación**: concatena `[4 bytes SHA-256] + [payload comprimido]` y lo codifica en **Base32 Crockford** (alfabeto `0-9A-HJKMNP-TV-Z`, tolerante a errores visuales `O/0`, `I/L/1`), anteponiendo el prefijo de versión **`LUZ1-`**.
-5. **QR único o multiparte**:
-   - Si el código `LUZ1-...` mide `<= 900` caracteres, se genera **1 solo código QR**.
-   - Si supera los 900 caracteres, se divide automáticamente en fragmentos numerados con formato:
-     ```text
-     LUZ1P|<sessionId4>|<parteActual>|<totalPartes>|<sha256_8chars>|<fragmento>
-     ```
-   - El escáner recolecta los fragmentos en cualquier orden y verifica la suma `sha256_8chars` al completar todas las partes.
 
 ---
 
@@ -234,9 +226,9 @@ En `app/build/outputs/apk/debug/` (o `release/`):
 
 Las pruebas se ejecutan sin necesidad de emulador ni ADB:
 
-- `ScheduleEngineTest`: ciclos 4h/12h, ciclos 3h/9h y 6h/18h, desplazamientos, cruces de medianoche/mes/año, prioridades 1..4, horarios fijos, circuitos sin información, intervalos consecutivos y relaciones.
-- `TransferCodecTest`: codificación/decodificación Base32 Crockford, detección de códigos dañados o versiones incompatibles, exportación sin datos personales y QR multiparte con catálogos grandes (120+ circuitos).
-- `ExampleRobolectricTest`: inicialización de Room con los 19 circuitos, crecimiento dinámico del catálogo y preservación de datos personales al importar pronósticos.
+- `ScheduleEngineTest`: ciclos 4h/12h, matemática de `RotationCycle`, ciclos 3h/9h y 6h/18h, desplazamientos, cruces de medianoche/mes/año, prioridades 1..4, horarios fijos, indicador día/noche y formato 12h/24h por zona horaria.
+- `TransferCodecTest`: codificación/decodificación Base32 Crockford, detección de códigos dañados o versiones incompatibles, exportación sin datos personales y respaldo completo JSON con ciclos y versión.
+- `ExampleRobolectricTest`: inicialización de Room con los 19 circuitos y ciclos iniciales, sincronización secuencial de fases al guardar ciclos y preservación de datos personales al importar pronósticos.
 
 ---
 

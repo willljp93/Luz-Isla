@@ -84,10 +84,16 @@ class HttpsSyncManager(
                 )
 
                 val status = "Actualizado a v${decoded.payload.configVersion} (${decoded.snapshot.circuits.size} circuitos)"
+                val ts = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso) ?: System.currentTimeMillis()
                 prefsRepo.recordSyncSuccess(
                     version = decoded.payload.configVersion,
                     forecastUpdateMillis = System.currentTimeMillis(),
                     statusMessage = status
+                )
+                prefsRepo.recordActiveConfigMetadata(
+                    version = decoded.payload.configVersion,
+                    timestampMillis = ts,
+                    source = "Sincronización HTTPS (${decoded.payload.sourceName.ifBlank { "Remoto" }})"
                 )
 
                 SyncOutcome.Updated(

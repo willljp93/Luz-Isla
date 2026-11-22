@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,9 +18,10 @@ import kotlinx.coroutines.launch
         ExplicitForecastEntity::class,
         ManualExceptionEntity::class,
         CircuitRelationEntity::class,
-        ConfigBackupEntity::class
+        ConfigBackupEntity::class,
+        RotationCycleEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,10 +32,31 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun manualExceptionDao(): ManualExceptionDao
     abstract fun circuitRelationDao(): CircuitRelationDao
     abstract fun configBackupDao(): ConfigBackupDao
+    abstract fun rotationCycleDao(): RotationCycleDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `rotation_cycles` (
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `description` TEXT NOT NULL,
+                        `serviceDurationMinutes` INTEGER NOT NULL,
+                        `outageDurationMinutes` INTEGER NOT NULL,
+                        `referenceEpochMillis` INTEGER NOT NULL,
+                        `orderedGroupIdsCsv` TEXT NOT NULL,
+                        `isActive` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -47,6 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "luz_isla.db"
             )
+                .addMigrations(MIGRATION_1_2)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -59,9 +83,17 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         suspend fun seedIfEmpty(database: AppDatabase) {
-            if (database.circuitDao().getAllOnce().isNotEmpty()) return
+            if (database.circuitDao().getAllOnce().isNotEmpty()) {
+                if (database.rotationCycleDao().getAllOnce().isEmpty() &&
+                    database.scheduleGroupDao().getAllOnce().any { it.id.startsWith("grp_ejemplo_") }
+                ) {
+                    database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
+                }
+                return
+            }
             val now = System.currentTimeMillis()
             database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
+            database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
             database.circuitDao().upsertAll(SeedDataProvider.initialCircuits(now))
             database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
             database.circuitRelationDao().upsertAll(SeedDataProvider.initialRelations())

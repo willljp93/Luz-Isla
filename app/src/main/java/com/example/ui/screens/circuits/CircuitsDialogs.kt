@@ -1,18 +1,29 @@
 package com.example.ui.screens.circuits
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,19 +35,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.Circuit
 import com.example.domain.model.CircuitRelation
-import com.example.domain.model.ExplicitForecast
 import com.example.domain.model.FixedScheduleRule
-import com.example.domain.model.IntervalKind
 import com.example.domain.model.ManualException
 import com.example.domain.model.RelationType
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
 import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun CircuitEditorDialog(
@@ -116,7 +124,7 @@ fun CircuitEditorDialog(
                 }
 
                 if (groups.isNotEmpty()) {
-                    Text("Grupo rotativo", style = MaterialTheme.typography.labelLarge)
+                    Text("Grupo", style = MaterialTheme.typography.labelLarge)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -162,129 +170,62 @@ fun CircuitEditorDialog(
 @Composable
 fun GroupEditorDialog(
     existing: ScheduleGroup?,
+    allCircuits: List<Circuit>,
+    initialMemberCodes: Set<String>,
     onDismiss: () -> Unit,
     onSave: (
         id: String?,
         name: String,
         description: String,
-        serviceHours: Int,
-        serviceMinutes: Int,
-        outageHours: Int,
-        outageMinutes: Int,
-        refDateStr: String,
-        refTimeStr: String,
-        phaseOffsetMinutes: Int
+        selectedCircuitCodes: Set<String>
     ) -> Unit
 ) {
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var description by remember { mutableStateOf(existing?.description ?: "") }
-    var svcH by remember { mutableStateOf(((existing?.serviceDurationMinutes ?: 240) / 60).toString()) }
-    var svcM by remember { mutableStateOf(((existing?.serviceDurationMinutes ?: 240) % 60).toString()) }
-    var outH by remember { mutableStateOf(((existing?.outageDurationMinutes ?: 720) / 60).toString()) }
-    var outM by remember { mutableStateOf(((existing?.outageDurationMinutes ?: 720) % 60).toString()) }
-    var refDate by remember {
-        mutableStateOf(
-            existing?.let { CircuitsViewModel.formatEpochDateStr(it.referenceEpochMillis) }
-                ?: LocalDate.now(ScheduleEngine.HAVANA_ZONE).toString()
-        )
-    }
-    var refTime by remember {
-        mutableStateOf(
-            existing?.let { CircuitsViewModel.formatEpochTime24Str(it.referenceEpochMillis) } ?: "00:00"
-        )
-    }
-    var phaseOffset by remember { mutableStateOf((existing?.phaseOffsetMinutes ?: 0).toString()) }
+    var selectedCodes by remember { mutableStateOf(initialMemberCodes) }
+    var showMemberPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "Nuevo grupo rotativo" else "Editar grupo") },
+        title = { Text(if (existing == null) "Nuevo grupo de circuitos" else "Editar grupo") },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nombre del grupo*") },
+                    label = { Text("Nombre del grupo (ej. Grupo 1)*") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Descripción") },
+                    label = { Text("Descripción (opcional)") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = svcH,
-                        onValueChange = { svcH = it },
-                        label = { Text("Serv. (h)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = svcM,
-                        onValueChange = { svcM = it },
-                        label = { Text("Serv. (m)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = outH,
-                        onValueChange = { outH = it },
-                        label = { Text("Sin serv. (h)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = outM,
-                        onValueChange = { outM = it },
-                        label = { Text("Sin serv. (m)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = refDate,
-                        onValueChange = { refDate = it },
-                        label = { Text("Fecha ref. (AAAA-MM-DD)") },
-                        modifier = Modifier.weight(1.3f)
-                    )
-                    OutlinedTextField(
-                        value = refTime,
-                        onValueChange = { refTime = it },
-                        label = { Text("Hora (HH:mm)") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                OutlinedTextField(
-                    value = phaseOffset,
-                    onValueChange = { phaseOffset = it },
-                    label = { Text("Desplazamiento / fase (minutos)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                OutlinedButton(
+                    onClick = { showMemberPicker = true },
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Icon(Icons.Filled.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Elegir circuitos (${selectedCodes.size})")
+                }
+                if (selectedCodes.isNotEmpty()) {
+                    Text(
+                        text = "Seleccionados: ${selectedCodes.sorted().joinToString(", ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(
-                    existing?.id,
-                    name,
-                    description,
-                    svcH.toIntOrNull() ?: 4,
-                    svcM.toIntOrNull() ?: 0,
-                    outH.toIntOrNull() ?: 12,
-                    outM.toIntOrNull() ?: 0,
-                    refDate,
-                    refTime,
-                    phaseOffset.toIntOrNull() ?: 0
-                )
+                onSave(existing?.id, name, description, selectedCodes)
                 onDismiss()
             }) { Text("Guardar") }
         },
@@ -292,6 +233,19 @@ fun GroupEditorDialog(
             TextButton(onClick = onDismiss) { Text("Cancelar") }
         }
     )
+
+    if (showMemberPicker) {
+        GroupMembersPickerDialog(
+            groupName = name.ifBlank { "Grupo" },
+            allCircuits = allCircuits,
+            initialSelectedCodes = selectedCodes,
+            onDismiss = { showMemberPicker = false },
+            onConfirm = { picked ->
+                selectedCodes = picked
+                showMemberPicker = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -308,8 +262,10 @@ fun FixedRuleEditorDialog(
     var validFrom by remember { mutableStateOf(existing?.validFromEpochDay?.let { LocalDate.ofEpochDay(it).toString() } ?: "") }
     var validTo by remember { mutableStateOf(existing?.validToEpochDay?.let { LocalDate.ofEpochDay(it).toString() } ?: "") }
     var label by remember { mutableStateOf(existing?.label ?: "") }
+    var showCircuitPicker by remember { mutableStateOf(false) }
 
     val dayLabels = listOf("L", "M", "X", "J", "V", "S", "D")
+    val selectedCircuitObj = circuits.firstOrNull { it.code.equals(selectedCode, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -317,21 +273,31 @@ fun FixedRuleEditorDialog(
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("Circuito", style = MaterialTheme.typography.labelLarge)
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showCircuitPicker = true }
                 ) {
-                    circuits.forEach { c ->
-                        FilterChip(
-                            selected = selectedCode == c.code,
-                            onClick = { selectedCode = c.code },
-                            label = { Text(c.code) }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Filled.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = selectedCircuitObj?.displayTitle() ?: selectedCode.ifBlank { "Seleccionar circuito…" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
                         )
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = "Abrir lista de circuitos")
                     }
                 }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = startStr,
@@ -390,112 +356,26 @@ fun FixedRuleEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
-}
 
-@Composable
-fun ForecastEditorDialog(
-    circuits: List<Circuit>,
-    existing: ExplicitForecast?,
-    onDismiss: () -> Unit,
-    onSave: (String?, String, String, String, String, IntervalKind, String) -> Unit
-) {
-    var dateStr by remember {
-        mutableStateOf(
-            existing?.let { LocalDate.ofEpochDay(it.dateEpochDay).toString() }
-                ?: LocalDate.now(ScheduleEngine.HAVANA_ZONE).toString()
+    if (showCircuitPicker) {
+        CircuitSelectorDialog(
+            title = "Elegir circuito",
+            circuits = circuits,
+            selectedCode = selectedCode,
+            onSelect = {
+                selectedCode = it
+                showCircuitPicker = false
+            },
+            onDismiss = { showCircuitPicker = false }
         )
     }
-    var startStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.startMinuteOfDay) } ?: "08:00") }
-    var endStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.endMinuteOfDay) } ?: "12:00") }
-    var codesCsv by remember { mutableStateOf(existing?.circuitCodes?.joinToString(",") ?: "") }
-    var kind by remember { mutableStateOf(existing?.intervalKind ?: IntervalKind.SERVICE) }
-    var notes by remember { mutableStateOf(existing?.notes ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Pronóstico por fecha") },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = dateStr,
-                    onValueChange = { dateStr = it },
-                    label = { Text("Fecha (AAAA-MM-DD)*") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = startStr,
-                        onValueChange = { startStr = it },
-                        label = { Text("Inicio (HH:mm)") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = endStr,
-                        onValueChange = { endStr = it },
-                        label = { Text("Fin (HH:mm)") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                OutlinedTextField(
-                    value = codesCsv,
-                    onValueChange = { codesCsv = it.uppercase() },
-                    label = { Text("Circuitos (ej. A210, A177)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    circuits.forEach { c ->
-                        val selected = codesCsv.split(",").map { it.trim() }.contains(c.code)
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                val current = codesCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
-                                if (c.code in current) current.remove(c.code) else current.add(c.code)
-                                codesCsv = current.joinToString(",")
-                            },
-                            label = { Text(c.code) }
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = kind == IntervalKind.SERVICE,
-                        onClick = { kind = IntervalKind.SERVICE },
-                        label = { Text("Con servicio") }
-                    )
-                    FilterChip(
-                        selected = kind == IntervalKind.OUTAGE,
-                        onClick = { kind = IntervalKind.OUTAGE },
-                        label = { Text("Sin servicio") }
-                    )
-                }
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text("Observaciones") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onSave(existing?.id, dateStr, startStr, endStr, codesCsv, kind, notes)
-                onDismiss()
-            }) { Text("Guardar") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
 }
 
 @Composable
 fun ExceptionEditorDialog(
     circuits: List<Circuit>,
     existing: ManualException?,
+    zoneId: ZoneId,
     onDismiss: () -> Unit,
     onSave: (String?, String, String, String, String, Boolean, String) -> Unit
 ) {
@@ -503,13 +383,14 @@ fun ExceptionEditorDialog(
     var dateStr by remember {
         mutableStateOf(
             existing?.let { LocalDate.ofEpochDay(it.dateEpochDay).toString() }
-                ?: LocalDate.now(ScheduleEngine.HAVANA_ZONE).toString()
+                ?: LocalDate.now(zoneId).toString()
         )
     }
     var startStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.startMinuteOfDay) } ?: "00:00") }
     var endStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.endMinuteOfDay) } ?: "24:00") }
     var hasService by remember { mutableStateOf(existing?.hasService ?: false) }
     var reason by remember { mutableStateOf(existing?.reason ?: "") }
+    var showCircuitPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -519,16 +400,23 @@ fun ExceptionEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showCircuitPicker = true }
                 ) {
-                    circuits.forEach { c ->
-                        FilterChip(
-                            selected = code == c.code,
-                            onClick = { code = c.code },
-                            label = { Text(c.code) }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "Circuito: ${circuits.firstOrNull { it.code == code }?.displayTitle() ?: code}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
                         )
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = "Seleccionar circuito")
                     }
                 }
                 OutlinedTextField(
@@ -558,6 +446,19 @@ fun ExceptionEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
+
+    if (showCircuitPicker) {
+        CircuitSelectorDialog(
+            title = "Circuito de excepción",
+            circuits = circuits,
+            selectedCode = code,
+            onSelect = {
+                code = it
+                showCircuitPicker = false
+            },
+            onDismiss = { showCircuitPicker = false }
+        )
+    }
 }
 
 @Composable
@@ -572,6 +473,7 @@ fun RelationEditorDialog(
     var type by remember { mutableStateOf(existing?.relationType ?: RelationType.INFORMATIVA) }
     var syncEnabled by remember { mutableStateOf(existing?.syncRuleEnabled ?: false) }
     var notes by remember { mutableStateOf(existing?.notes ?: "") }
+    var pickTarget by remember { mutableStateOf<String?>(null) } // "SRC" or "TGT"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -582,16 +484,12 @@ fun RelationEditorDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text("Circuito origen", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    circuits.forEach { c ->
-                        FilterChip(selected = src == c.code, onClick = { src = c.code }, label = { Text(c.code) })
-                    }
+                OutlinedButton(onClick = { pickTarget = "SRC" }, modifier = Modifier.fillMaxWidth()) {
+                    Text(circuits.firstOrNull { it.code == src }?.displayTitle() ?: src)
                 }
                 Text("Circuito relacionado", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    circuits.forEach { c ->
-                        FilterChip(selected = tgt == c.code, onClick = { tgt = c.code }, label = { Text(c.code) })
-                    }
+                OutlinedButton(onClick = { pickTarget = "TGT" }, modifier = Modifier.fillMaxWidth()) {
+                    Text(circuits.firstOrNull { it.code == tgt }?.displayTitle() ?: tgt)
                 }
                 Text("Tipo de relación", style = MaterialTheme.typography.labelLarge)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -620,6 +518,19 @@ fun RelationEditorDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
+
+    pickTarget?.let { which ->
+        CircuitSelectorDialog(
+            title = if (which == "SRC") "Circuito origen" else "Circuito relacionado",
+            circuits = circuits,
+            selectedCode = if (which == "SRC") src else tgt,
+            onSelect = {
+                if (which == "SRC") src = it else tgt = it
+                pickTarget = null
+            },
+            onDismiss = { pickTarget = null }
+        )
+    }
 }
 
 @Composable

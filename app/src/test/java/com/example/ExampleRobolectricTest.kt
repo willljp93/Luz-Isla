@@ -8,6 +8,8 @@ import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.ImportMergeMode
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.model.Circuit
+import com.example.domain.model.RotationCycle
+import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduleType
 import kotlinx.coroutines.test.runTest
@@ -49,12 +51,12 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `seed populates 19 circuits and import merge preserves personal favorites and names`() = runTest {
+    fun `seed populates 19 circuits and cycles, and import merge preserves personal favorites and names`() = runTest {
         AppDatabase.seedIfEmpty(db)
         val initial = repository.getCurrentSnapshot()
         assertEquals(19, initial.circuits.size)
+        assertTrue(initial.cycles.isNotEmpty())
 
-        // User personalizes A210
         val existingA210 = initial.circuits.first { it.code == "A210" }
         repository.upsertCircuit(
             existingA210.copy(
@@ -65,7 +67,6 @@ class ExampleRobolectricTest {
             )
         )
 
-        // Incoming forecast update with blank personal fields + new circuit A990
         val incoming = ScheduleSnapshot(
             circuits = listOf(
                 Circuit(code = "A210", customName = "", comment = "", scheduleType = ScheduleType.ROTATING, isFavorite = false, isPrimaryHome = false),
@@ -75,7 +76,8 @@ class ExampleRobolectricTest {
             fixedRules = initial.fixedRules,
             explicitForecasts = initial.explicitForecasts,
             manualExceptions = emptyList(),
-            relations = initial.relations
+            relations = initial.relations,
+            cycles = initial.cycles
         )
 
         repository.applyImportedSnapshot(
@@ -91,5 +93,35 @@ class ExampleRobolectricTest {
         assertEquals("Calle 24 #102", a210After.comment)
         assertTrue(a210After.isFavorite)
         assertTrue(a210After.isPrimaryHome)
+    }
+
+    @Test
+    fun `upsertCycle calculates sequential phase offsets and updateGroupMembers assigns circuits cleanly`() = runTest {
+        AppDatabase.seedIfEmpty(db)
+        repository.upsertGroup(ScheduleGroup(id = "gA", name = "Grupo A", referenceEpochMillis = 1_700_000_000_000L))
+        repository.upsertGroup(ScheduleGroup(id = "gB", name = "Grupo B", referenceEpochMillis = 1_700_000_000_000L))
+        repository.upsertGroup(ScheduleGroup(id = "gC", name = "Grupo C", referenceEpochMillis = 1_700_000_000_000L))
+
+        val cycle = RotationCycle(
+            id = "cyc_test",
+            name = "Ciclo 4x12 Test",
+            serviceDurationMinutes = 240,
+            outageDurationMinutes = 720,
+            referenceEpochMillis = 1_700_000_000_000L,
+            orderedGroupIds = listOf("gA", "gB", "gC")
+        )
+        repository.upsertCycle(cycle)
+        repository.updateGroupMembers("gA", setOf("A210", "A030"))
+
+        val snap = repository.getCurrentSnapshot()
+        val groupsById = snap.groups.associateBy { it.id }
+        assertEquals(0, groupsById["gA"]?.phaseOffsetMinutes)
+        assertEquals(240, groupsById["gB"]?.phaseOffsetMinutes)
+        assertEquals(480, groupsById["gC"]?.phaseOffsetMinutes)
+        assertEquals(720, groupsById["gA"]?.outageDurationMinutes)
+
+        val a030 = snap.circuits.first { it.code == "A030" }
+        assertEquals("gA", a030.groupId)
+        assertEquals(ScheduleType.ROTATING, a030.scheduleType)
     }
 }

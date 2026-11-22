@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/luz_isla_icon_1795314836013"
+        android:drawable="@drawable/luz_isla_base"
         android:gravity="center" />
 </layer-list>

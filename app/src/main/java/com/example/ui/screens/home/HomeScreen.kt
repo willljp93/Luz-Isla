@@ -1,6 +1,11 @@
 package com.example.ui.screens.home
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,8 +60,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +71,10 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.CircuitStatusEvaluation
 import com.example.domain.model.ScheduledState
 import com.example.ui.components.CircuitDetailBottomSheet
+import com.example.ui.components.DayNightAmbientScreenBrush
+import com.example.ui.components.DayNightChip
+import com.example.ui.components.IslaEmblemBadge
+import com.example.ui.components.rememberHeroDayNightBrush
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.Instant
@@ -78,14 +86,41 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val statusColors = LocalElectricStatusColors.current
-    val nowZdt = remember(state.nowMillis) {
-        Instant.ofEpochMilli(state.nowMillis).atZone(ScheduleEngine.HAVANA_ZONE)
+    val nowZdt = remember(state.nowMillis, state.zoneId) {
+        Instant.ofEpochMilli(state.nowMillis).atZone(state.zoneId)
     }
     var shareMenuExpanded by remember { mutableStateOf(false) }
 
+    // Single lightweight shared pulse value when animations are enabled
+    val electricPulse = if (state.enableElectricAnimations) {
+        val transition = rememberInfiniteTransition(label = "electric_status_pulse")
+        val value by transition.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulse_alpha"
+        )
+        value
+    } else {
+        1f
+    }
+
+    val screenBackdrop = DayNightAmbientScreenBrush(
+        isDaytime = state.isDaytime,
+        themeMode = state.themeMode
+    )
+    val heroBrush = rememberHeroDayNightBrush(
+        isDaytime = state.isDaytime,
+        themeMode = state.themeMode
+    )
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .background(screenBackdrop),
         contentAlignment = Alignment.TopCenter
     ) {
         LazyColumn(
@@ -95,23 +130,15 @@ fun HomeScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Hero Clock & Overview Card
             item(key = "hero_banner") {
                 Surface(
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier.fillMaxWidth(),
-                    shadowElevation = 2.dp
+                    shadowElevation = 3.dp
                 ) {
                     Column(
                         modifier = Modifier
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.secondary
-                                    )
-                                )
-                            )
+                            .background(heroBrush)
                             .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -120,24 +147,35 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Top
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Luz Isla – Horarios",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                IslaEmblemBadge(
+                                    state = state.primaryHomeState,
+                                    enableAnimation = state.enableElectricAnimations,
+                                    size = 50.dp
                                 )
-                                Text(
-                                    text = ScheduleEngine.formatDateEs(nowZdt.toLocalDate()),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
-                                )
+                                Column {
+                                    Text(
+                                        text = "Luz Isla",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = ScheduleEngine.formatDateEs(nowZdt.toLocalDate()),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = ScheduleEngine.formatTime12h(state.nowMillis),
+                                    text = ScheduleEngine.formatTime(state.nowMillis, state.use24h, state.zoneId),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Box {
@@ -148,7 +186,7 @@ fun HomeScreen(
                                         Icon(
                                             Icons.Filled.Share,
                                             contentDescription = "Compartir resumen",
-                                            tint = MaterialTheme.colorScheme.onPrimary
+                                            tint = Color.White
                                         )
                                     }
                                     DropdownMenu(
@@ -198,6 +236,26 @@ fun HomeScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            DayNightChip(
+                                isDaytime = state.isDaytime,
+                                sunriseMinutes = state.sunriseMinutes,
+                                sunsetMinutes = state.sunsetMinutes,
+                                use24h = state.use24h
+                            )
+                            Text(
+                                text = state.zoneId.id.substringAfterLast('/').replace('_', ' '),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             SummaryCountPill(
@@ -218,7 +276,7 @@ fun HomeScreen(
                         }
 
                         val lastUpd = if (state.lastUpdateMillis > 0L) {
-                            "Última actualización: ${ScheduleEngine.formatTime12h(state.lastUpdateMillis)}"
+                            "Última actualización: ${ScheduleEngine.formatTime(state.lastUpdateMillis, state.use24h, state.zoneId)}"
                         } else {
                             "Modo sin conexión • Catálogo local editable"
                         }
@@ -226,21 +284,20 @@ fun HomeScreen(
                             Icon(
                                 Icons.Filled.Info,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                                tint = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "$lastUpd • Estado programado (no oficial)",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                                color = Color.White.copy(alpha = 0.9f)
                             )
                         }
                     }
                 }
             }
 
-            // Search bar + Compact toggle
             item(key = "search_row") {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -283,7 +340,6 @@ fun HomeScreen(
                 }
             }
 
-            // Filter Chips
             item(key = "filter_chips") {
                 Row(
                     modifier = Modifier
@@ -337,12 +393,20 @@ fun HomeScreen(
                     if (state.compactMode) {
                         CompactCircuitRow(
                             eval = eval,
+                            use24h = state.use24h,
+                            zoneId = state.zoneId,
+                            electricPulse = electricPulse,
+                            enableAnimations = state.enableElectricAnimations,
                             onClick = { viewModel.openCircuitDetail(eval.circuit.code) },
                             onToggleFavorite = { viewModel.toggleFavorite(eval.circuit.code) }
                         )
                     } else {
                         RichCircuitCard(
                             eval = eval,
+                            use24h = state.use24h,
+                            zoneId = state.zoneId,
+                            electricPulse = electricPulse,
+                            enableAnimations = state.enableElectricAnimations,
                             onClick = { viewModel.openCircuitDetail(eval.circuit.code) },
                             onToggleFavorite = { viewModel.toggleFavorite(eval.circuit.code) }
                         )
@@ -357,6 +421,8 @@ fun HomeScreen(
             evaluation = detailEval,
             snapshot = state.snapshot,
             nowMillis = state.nowMillis,
+            use24h = state.use24h,
+            zoneId = state.zoneId,
             onDismiss = viewModel::closeCircuitDetail,
             onToggleFavorite = viewModel::toggleFavorite,
             onSetPrimaryHome = viewModel::setPrimaryHome,
@@ -405,6 +471,10 @@ private fun SummaryCountPill(
 @Composable
 private fun RichCircuitCard(
     eval: CircuitStatusEvaluation,
+    use24h: Boolean,
+    zoneId: java.time.ZoneId,
+    electricPulse: Float,
+    enableAnimations: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
@@ -433,6 +503,16 @@ private fun RichCircuitCard(
         )
     }
 
+    val animatedBorderColor = when {
+        circuit.isPrimaryHome && eval.state == ScheduledState.SERVICE_SCHEDULED && enableAnimations ->
+            statusColors.service.copy(alpha = 0.45f + 0.55f * electricPulse)
+        circuit.isPrimaryHome -> statusColors.favorite
+        circuit.isFavorite && eval.state == ScheduledState.SERVICE_SCHEDULED && enableAnimations ->
+            accent.copy(alpha = 0.3f + 0.4f * electricPulse)
+        circuit.isFavorite -> accent.copy(alpha = 0.45f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    }
+
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -442,11 +522,7 @@ private fun RichCircuitCard(
                 MaterialTheme.colorScheme.surface
             }
         ),
-        border = when {
-            circuit.isPrimaryHome -> BorderStroke(2.dp, statusColors.favorite)
-            circuit.isFavorite -> BorderStroke(1.2.dp, accent.copy(alpha = 0.45f))
-            else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-        },
+        border = BorderStroke(if (circuit.isPrimaryHome) 2.dp else 1.2.dp, animatedBorderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isHighlighted) 3.dp else 1.dp),
         modifier = Modifier
             .fillMaxWidth()
@@ -461,12 +537,19 @@ private fun RichCircuitCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val iconAlpha = when {
+                    !enableAnimations -> 1f
+                    eval.state == ScheduledState.SERVICE_SCHEDULED -> 0.72f + 0.28f * electricPulse
+                    eval.state == ScheduledState.OUTAGE_SCHEDULED -> 0.5f + 0.25f * (1f - electricPulse)
+                    else -> 1f
+                }
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(container)
+                        .graphicsLayer { alpha = iconAlpha }
                 ) {
                     Icon(icon, contentDescription = stateText, tint = accent)
                 }
@@ -562,18 +645,21 @@ private fun RichCircuitCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val periodStr = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                    "Período: ${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)} – ${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                    "Período: ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
                 } else {
                     "Período: Sin datos"
                 }
                 Text(
                     text = periodStr,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
 
                 val nextStr = if (eval.nextServiceStartMillis != null) {
-                    "Próx. servicio: ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)}"
+                    "Próx: ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)}"
                 } else {
                     "Próx: --"
                 }
@@ -591,6 +677,10 @@ private fun RichCircuitCard(
 @Composable
 private fun CompactCircuitRow(
     eval: CircuitStatusEvaluation,
+    use24h: Boolean,
+    zoneId: java.time.ZoneId,
+    electricPulse: Float,
+    enableAnimations: Boolean,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
@@ -605,6 +695,11 @@ private fun CompactCircuitRow(
         ScheduledState.SERVICE_SCHEDULED -> "Con servicio"
         ScheduledState.OUTAGE_SCHEDULED -> "Sin servicio"
         ScheduledState.UNKNOWN -> "Sin info"
+    }
+    val dotAlpha = if (enableAnimations && eval.state == ScheduledState.SERVICE_SCHEDULED) {
+        0.55f + 0.45f * electricPulse
+    } else {
+        1f
     }
 
     Surface(
@@ -624,6 +719,7 @@ private fun CompactCircuitRow(
                 modifier = Modifier
                     .size(12.dp)
                     .clip(CircleShape)
+                    .graphicsLayer { alpha = dotAlpha }
                     .background(accent)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -636,7 +732,7 @@ private fun CompactCircuitRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 val sub = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                    "$statusShort • ${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)}–${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                    "$statusShort • ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
                 } else {
                     statusShort
                 }

@@ -5,6 +5,7 @@ import com.example.domain.model.CircuitRelation
 import com.example.domain.model.ExplicitForecast
 import com.example.domain.model.FixedScheduleRule
 import com.example.domain.model.ManualException
+import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import kotlinx.serialization.Serializable
@@ -29,6 +30,7 @@ data class LuzIslaConfigPayload(
     val explicitForecasts: List<ExplicitForecast> = emptyList(),
     val manualExceptions: List<ManualException> = emptyList(),
     val relations: List<CircuitRelation> = emptyList(),
+    val cycles: List<RotationCycle> = emptyList(),
     val sha256: String = ""
 ) {
     companion object {
@@ -49,6 +51,7 @@ data class ImportSummary(
     val includesPersonalData: Boolean,
     val circuitCount: Int,
     val groupCount: Int,
+    val cycleCount: Int,
     val fixedRuleCount: Int,
     val forecastCount: Int,
     val exceptionCount: Int,
@@ -56,19 +59,8 @@ data class ImportSummary(
     val sha256Verified: Boolean
 )
 
-data class QrPartPacket(
-    val sessionId: String,
-    val partIndex: Int,
-    val totalParts: Int,
-    val sha8: String,
-    val chunk: String
-)
-
 object ConfigCodec {
     const val CODE_PREFIX = "LUZ1-"
-    const val QR_PART_PREFIX = "LUZ1P|"
-    const val SINGLE_QR_MAX_CHARS = 900
-    private const val QR_CHUNK_CHARS = 700
     private const val MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024
 
     private val json = Json {
@@ -115,6 +107,7 @@ object ConfigCodec {
             explicitForecasts = snapshot.explicitForecasts,
             manualExceptions = snapshot.manualExceptions,
             relations = snapshot.relations,
+            cycles = snapshot.cycles,
             sha256 = ""
         )
         val canonical = json.encodeToString(unsigned)
@@ -167,7 +160,8 @@ object ConfigCodec {
             fixedRules = parsed.fixedRules.distinctBy { it.id },
             explicitForecasts = parsed.explicitForecasts.distinctBy { it.id },
             manualExceptions = parsed.manualExceptions.distinctBy { it.id },
-            relations = parsed.relations.distinctBy { it.id }
+            relations = parsed.relations.distinctBy { it.id },
+            cycles = parsed.cycles.distinctBy { it.id }
         )
         return DecodedConfigResult(
             payload = parsed.copy(circuits = deduplicatedCircuits),
@@ -182,7 +176,6 @@ object ConfigCodec {
         val fullHash = sha256Bytes(jsonBytes)
         val compressed = deflate(jsonBytes)
 
-        // Envelope: [4-byte SHA-256 prefix] + [Deflate compressed JSON]
         val envelope = ByteArray(4 + compressed.size)
         System.arraycopy(fullHash, 0, envelope, 0, 4)
         System.arraycopy(compressed, 0, envelope, 4, compressed.size)
@@ -225,35 +218,6 @@ object ConfigCodec {
         return decodeFromJson(String(jsonBytes, Charsets.UTF_8))
     }
 
-    fun buildQrPayloads(alphanumericCode: String): List<String> {
-        if (alphanumericCode.length <= SINGLE_QR_MAX_CHARS) {
-            return listOf(alphanumericCode)
-        }
-        val sha8 = sha256Hex(alphanumericCode.toByteArray(Charsets.UTF_8)).take(8).uppercase()
-        val sessionId = sha8.take(4)
-        val chunks = alphanumericCode.chunked(QR_CHUNK_CHARS)
-        val total = chunks.size
-        return chunks.mapIndexed { idx, chunk ->
-            "$QR_PART_PREFIX$sessionId|${idx + 1}|$total|$sha8|$chunk"
-        }
-    }
-
-    fun parseQrPart(raw: String): QrPartPacket? {
-        if (!raw.startsWith(QR_PART_PREFIX)) return null
-        val parts = raw.split("|", limit = 6)
-        if (parts.size != 6) return null
-        val idx = parts[2].toIntOrNull() ?: return null
-        val total = parts[3].toIntOrNull() ?: return null
-        if (idx < 1 || total < 1 || idx > total) return null
-        return QrPartPacket(
-            sessionId = parts[1],
-            partIndex = idx,
-            totalParts = total,
-            sha8 = parts[4],
-            chunk = parts[5]
-        )
-    }
-
     fun buildSummary(decoded: DecodedConfigResult): ImportSummary {
         val p = decoded.payload
         return ImportSummary(
@@ -263,12 +227,18 @@ object ConfigCodec {
             includesPersonalData = p.includesPersonalData,
             circuitCount = decoded.snapshot.circuits.size,
             groupCount = decoded.snapshot.groups.size,
+            cycleCount = decoded.snapshot.cycles.size,
             fixedRuleCount = decoded.snapshot.fixedRules.size,
             forecastCount = decoded.snapshot.explicitForecasts.size,
             exceptionCount = decoded.snapshot.manualExceptions.size,
             relationCount = decoded.snapshot.relations.size,
             sha256Verified = decoded.sha256Verified
         )
+    }
+
+    fun parseGeneratedAtMillis(isoString: String): Long? {
+        if (isoString.isBlank()) return null
+        return runCatching { Instant.parse(isoString.trim()).toEpochMilli() }.getOrNull()
     }
 
     private fun deflate(input: ByteArray): ByteArray {
@@ -321,55 +291,4 @@ object ConfigCodec {
 
     fun sha256Hex(data: ByteArray): String =
         sha256Bytes(data).joinToString("") { "%02x".format(it) }
-}
-
-class MultiPartQrCollector {
-    private var activeSessionId: String? = null
-    private var expectedTotal: Int = 0
-    private var expectedSha8: String = ""
-    private val chunks = linkedMapOf<Int, String>()
-
-    sealed interface ScanProgress {
-        data class Complete(val fullCode: String) : ScanProgress
-        data class Partial(val collected: Int, val total: Int, val missingIndices: List<Int>) : ScanProgress
-        data class Error(val message: String) : ScanProgress
-    }
-
-    fun reset() {
-        activeSessionId = null
-        expectedTotal = 0
-        expectedSha8 = ""
-        chunks.clear()
-    }
-
-    fun acceptScan(rawText: String): ScanProgress {
-        val trimmed = rawText.trim()
-        if (trimmed.startsWith(ConfigCodec.CODE_PREFIX, ignoreCase = true)) {
-            return ScanProgress.Complete(trimmed)
-        }
-        val packet = ConfigCodec.parseQrPart(trimmed)
-            ?: return ScanProgress.Error("El código QR escaneado no pertenece a Luz Isla.")
-
-        if (activeSessionId == null) {
-            activeSessionId = packet.sessionId
-            expectedTotal = packet.totalParts
-            expectedSha8 = packet.sha8
-        } else if (activeSessionId != packet.sessionId || expectedTotal != packet.totalParts || expectedSha8 != packet.sha8) {
-            return ScanProgress.Error("Este fragmento pertenece a otra exportación diferente. Reinicia el escáner si deseas cambiar.")
-        }
-
-        chunks[packet.partIndex] = packet.chunk
-        if (chunks.size == expectedTotal) {
-            val assembled = (1..expectedTotal).joinToString("") { chunks[it].orEmpty() }
-            val actualSha8 = ConfigCodec.sha256Hex(assembled.toByteArray(Charsets.UTF_8)).take(8).uppercase()
-            if (actualSha8 != expectedSha8) {
-                reset()
-                return ScanProgress.Error("Error de integridad al unir los fragmentos QR.")
-            }
-            return ScanProgress.Complete(assembled)
-        }
-
-        val missing = (1..expectedTotal).filter { it !in chunks.keys }
-        return ScanProgress.Partial(chunks.size, expectedTotal, missing)
-    }
 }

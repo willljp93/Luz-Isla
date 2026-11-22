@@ -44,6 +44,7 @@ import com.example.domain.model.TimelineSegment
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun Timeline24hBar(
@@ -54,11 +55,13 @@ fun Timeline24hBar(
     currentTimeMillis: Long? = null,
     selectedSegment: TimelineSegment? = null,
     showHourAxis: Boolean = true,
+    use24h: Boolean = false,
+    zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
     onSegmentTap: (TimelineSegment) -> Unit = {}
 ) {
     val statusColors = LocalElectricStatusColors.current
-    val dayStart = date.atStartOfDay(ScheduleEngine.HAVANA_ZONE).toInstant().toEpochMilli()
-    val dayEnd = date.plusDays(1).atStartOfDay(ScheduleEngine.HAVANA_ZONE).toInstant().toEpochMilli()
+    val dayStart = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val dayEnd = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
     val totalDayMillis = (dayEnd - dayStart).coerceAtLeast(1L).toFloat()
 
     val dividerColor = MaterialTheme.colorScheme.surface
@@ -151,11 +154,16 @@ fun Timeline24hBar(
 
         if (showHourAxis) {
             Spacer(modifier = Modifier.height(4.dp))
+            val axisLabels = if (use24h) {
+                listOf("00", "04", "08", "12", "16", "20", "24")
+            } else {
+                listOf("12a", "4a", "8a", "12p", "4p", "8p", "12a")
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                listOf("00", "04", "08", "12", "16", "20", "24").forEach { hour ->
+                axisLabels.forEach { hour ->
                     Text(
                         text = hour,
                         style = MaterialTheme.typography.labelSmall,
@@ -202,6 +210,8 @@ private fun LegendChip(color: Color, label: String) {
 @Composable
 fun TimelineSegmentDetailCard(
     segment: TimelineSegment,
+    use24h: Boolean = false,
+    zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
     modifier: Modifier = Modifier
 ) {
     val statusColors = LocalElectricStatusColors.current
@@ -264,7 +274,7 @@ fun TimelineSegmentDetailCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${ScheduleEngine.formatTime12h(segment.startMillis)} – ${ScheduleEngine.formatTime12h(segment.endMillis)} (${ScheduleEngine.formatDurationHuman(segment.durationMillis)})",
+                    text = "${ScheduleEngine.formatTime(segment.startMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(segment.endMillis, use24h, zoneId)} (${ScheduleEngine.formatDurationHuman(segment.durationMillis)})",
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = JetBrainsMonoFontFamily,
                     color = MaterialTheme.colorScheme.onSurface
@@ -283,6 +293,8 @@ fun TimelineSegmentDetailCard(
 fun TimelineIntervalsSummaryList(
     segments: List<TimelineSegment>,
     selectedSegment: TimelineSegment?,
+    use24h: Boolean = false,
+    zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
     onSelect: (TimelineSegment) -> Unit
 ) {
     val statusColors = LocalElectricStatusColors.current
@@ -319,7 +331,7 @@ fun TimelineIntervalsSummaryList(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "${ScheduleEngine.formatTime12h(seg.startMillis)} – ${ScheduleEngine.formatTime12h(seg.endMillis)}",
+                    text = "${ScheduleEngine.formatTime(seg.startMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(seg.endMillis, use24h, zoneId)}",
                     style = MaterialTheme.typography.labelLarge,
                     fontFamily = JetBrainsMonoFontFamily,
                     modifier = Modifier.weight(1f)

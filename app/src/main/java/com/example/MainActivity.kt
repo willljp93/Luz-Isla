@@ -5,6 +5,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,15 +22,18 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -53,9 +58,12 @@ import com.example.ui.screens.circuits.CircuitsScreen
 import com.example.ui.screens.circuits.CircuitsViewModel
 import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.home.HomeViewModel
+import com.example.ui.screens.onboarding.OnboardingScreen
 import com.example.ui.screens.settings.SettingsScreen
 import com.example.ui.screens.settings.SettingsViewModel
 import com.example.ui.theme.LuzIslaTheme
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable data object HomeRoute
@@ -85,20 +93,57 @@ class MainActivity : ComponentActivity() {
         val repository = LuzIslaRepository(database, prefsRepo)
 
         setContent {
-            val prefs by prefsRepo.preferencesFlow.collectAsStateWithLifecycle(
-                initialValue = UserPreferences()
-            )
+            val prefsOrNull by prefsRepo.preferencesFlow
+                .map<UserPreferences, UserPreferences?> { it }
+                .collectAsStateWithLifecycle(initialValue = null)
+            val scope = rememberCoroutineScope()
+            val currentPrefs = prefsOrNull
+
             LuzIslaTheme(
-                themeMode = prefs.themeMode,
-                dynamicColor = prefs.dynamicColor
+                themeMode = currentPrefs?.themeMode ?: com.example.domain.model.ThemeMode.SYSTEM,
+                dynamicColor = currentPrefs?.dynamicColor ?: false
             ) {
-                LuzIslaApp(
-                    appContext = applicationContext,
-                    repository = repository,
-                    prefsRepo = prefsRepo,
-                    initialCircuitCode = deepLinkCircuitCode.value,
-                    onConsumeDeepLink = { deepLinkCircuitCode.value = null }
-                )
+                if (currentPrefs == null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.background,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize())
+                    }
+                } else {
+                    Crossfade(targetState = currentPrefs.onboardingCompleted, label = "onboarding_gate") { completed ->
+                        if (!completed) {
+                            OnboardingScreen(
+                                initialThemeMode = currentPrefs.themeMode,
+                                initialDynamicColor = currentPrefs.dynamicColor,
+                                initialUseSystemTimezone = currentPrefs.useSystemTimezone,
+                                initialManualTimezoneId = currentPrefs.manualTimezoneId,
+                                initialUse24h = currentPrefs.use24HourFormat,
+                                onThemeChanged = { mode ->
+                                    scope.launch { prefsRepo.setThemeMode(mode) }
+                                },
+                                onDynamicColorChanged = { enabled ->
+                                    scope.launch { prefsRepo.setDynamicColor(enabled) }
+                                },
+                                onFinish = { useSystemTz, manualTz, use24h ->
+                                    scope.launch {
+                                        prefsRepo.setTimezonePreference(useSystemTz, manualTz)
+                                        prefsRepo.setUse24HourFormat(use24h)
+                                        prefsRepo.setOnboardingCompleted(true)
+                                    }
+                                }
+                            )
+                        } else {
+                            LuzIslaApp(
+                                appContext = applicationContext,
+                                repository = repository,
+                                prefsRepo = prefsRepo,
+                                initialCircuitCode = deepLinkCircuitCode.value,
+                                onConsumeDeepLink = { deepLinkCircuitCode.value = null }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -125,10 +170,10 @@ private fun LuzIslaApp(
         factory = HomeViewModel.Factory(appContext, repository, prefsRepo)
     )
     val calendarViewModel: CalendarViewModel = viewModel(
-        factory = CalendarViewModel.Factory(repository)
+        factory = CalendarViewModel.Factory(repository, prefsRepo)
     )
     val circuitsViewModel: CircuitsViewModel = viewModel(
-        factory = CircuitsViewModel.Factory(appContext, repository)
+        factory = CircuitsViewModel.Factory(appContext, repository, prefsRepo)
     )
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(appContext, repository, prefsRepo)

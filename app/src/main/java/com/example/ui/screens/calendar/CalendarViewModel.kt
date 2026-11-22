@@ -3,6 +3,8 @@ package com.example.ui.screens.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.preferences.UserPreferences
+import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.Circuit
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
+import java.time.ZoneId
 
 enum class CalendarViewMode(val label: String) {
     DAILY_COMPARATIVE("Línea 24h"),
@@ -46,11 +49,15 @@ data class CalendarUiState(
     val circuitTimelines: List<CircuitTimelineRow> = emptyList(),
     val groupTimelines: List<GroupTimelineRow> = emptyList(),
     val weeklyTimeline: Map<LocalDate, List<TimelineSegment>> = emptyMap(),
-    val hasAnyForecastOnSelectedDate: Boolean = false
+    val hasAnyForecastOnSelectedDate: Boolean = false,
+    val use24h: Boolean = false,
+    val zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
+    val snapshot: ScheduleSnapshot = ScheduleSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
 )
 
 class CalendarViewModel(
-    private val repository: LuzIslaRepository
+    private val repository: LuzIslaRepository,
+    private val prefsRepo: UserPreferencesRepository
 ) : ViewModel() {
 
     private val selectedDate = MutableStateFlow(LocalDate.now(ScheduleEngine.HAVANA_ZONE))
@@ -59,33 +66,34 @@ class CalendarViewModel(
     private val selectedCircuitCode = MutableStateFlow<String?>(null)
     private val selectedSegment = MutableStateFlow<Pair<String, TimelineSegment>?>(null)
 
-    val uiState: StateFlow<CalendarUiState> = combine(
-        repository.snapshotFlow,
+    private val controlsFlow = combine(
         selectedDate,
         viewMode,
         favoritesOnly,
         selectedCircuitCode,
         selectedSegment
-    ) { values ->
-        val snapshot = values[0] as ScheduleSnapshot
-        val date = values[1] as LocalDate
-        val mode = values[2] as CalendarViewMode
-        val favOnly = values[3] as Boolean
-        val chosenCode = values[4] as String?
-        @Suppress("UNCHECKED_CAST")
-        val pickedSeg = values[5] as Pair<String, TimelineSegment>?
+    ) { date, mode, favOnly, chosenCode, pickedSeg ->
+        CalendarControls(date, mode, favOnly, chosenCode, pickedSeg)
+    }
 
+    val uiState: StateFlow<CalendarUiState> = combine(
+        repository.snapshotFlow,
+        prefsRepo.preferencesFlow,
+        controlsFlow
+    ) { snapshot, prefs, controls ->
+        val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+        val date = controls.date
         val activeCircuits = snapshot.circuits.filter { it.isActive }
-        val effectiveCode = chosenCode?.takeIf { code -> activeCircuits.any { it.code == code } }
+        val effectiveCode = controls.chosenCode?.takeIf { code -> activeCircuits.any { it.code == code } }
             ?: activeCircuits.firstOrNull { it.isPrimaryHome }?.code
             ?: activeCircuits.firstOrNull { it.isFavorite }?.code
             ?: activeCircuits.firstOrNull()?.code
 
-        val visibleCircuits = activeCircuits.filter { !favOnly || it.isFavorite || it.isPrimaryHome }
+        val visibleCircuits = activeCircuits.filter { !controls.favOnly || it.isFavorite || it.isPrimaryHome }
         val circuitRows = visibleCircuits.map { circuit ->
             CircuitTimelineRow(
                 circuit = circuit,
-                segments = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, date)
+                segments = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, date, zoneId)
             )
         }
 
@@ -94,12 +102,12 @@ class CalendarViewModel(
             GroupTimelineRow(
                 group = group,
                 memberCodes = members,
-                segments = ScheduleEngine.getGroupTimelineForDay(group, date)
+                segments = ScheduleEngine.getGroupTimelineForDay(group, date, zoneId)
             )
         }
 
         val weekly = if (effectiveCode != null) {
-            ScheduleEngine.getTimelineForNextDays(effectiveCode, snapshot, date, 7)
+            ScheduleEngine.getTimelineForNextDays(effectiveCode, snapshot, date, 7, zoneId)
         } else {
             emptyMap()
         }
@@ -108,16 +116,19 @@ class CalendarViewModel(
 
         CalendarUiState(
             selectedDate = date,
-            viewMode = mode,
-            favoritesOnly = favOnly,
+            viewMode = controls.mode,
+            favoritesOnly = controls.favOnly,
             selectedCircuitCode = effectiveCode,
-            selectedSegment = pickedSeg?.second,
-            selectedSegmentOwner = pickedSeg?.first.orEmpty(),
+            selectedSegment = controls.pickedSeg?.second,
+            selectedSegmentOwner = controls.pickedSeg?.first.orEmpty(),
             activeCircuits = activeCircuits,
             circuitTimelines = circuitRows,
             groupTimelines = groupRows,
             weeklyTimeline = weekly,
-            hasAnyForecastOnSelectedDate = hasData
+            hasAnyForecastOnSelectedDate = hasData,
+            use24h = prefs.use24HourFormat,
+            zoneId = zoneId,
+            snapshot = snapshot
         )
     }.stateIn(
         scope = viewModelScope,
@@ -153,10 +164,21 @@ class CalendarViewModel(
         selectedSegment.value = owner to segment
     }
 
-    class Factory(private val repository: LuzIslaRepository) : ViewModelProvider.Factory {
+    private data class CalendarControls(
+        val date: LocalDate,
+        val mode: CalendarViewMode,
+        val favOnly: Boolean,
+        val chosenCode: String?,
+        val pickedSeg: Pair<String, TimelineSegment>?
+    )
+
+    class Factory(
+        private val repository: LuzIslaRepository,
+        private val prefsRepo: UserPreferencesRepository
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CalendarViewModel(repository) as T
+            return CalendarViewModel(repository, prefsRepo) as T
         }
     }
 }

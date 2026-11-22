@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,7 +23,6 @@ import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -57,7 +55,7 @@ import com.example.domain.model.TimelineSegment
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.Instant
-import java.time.LocalDate
+import java.time.ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +63,8 @@ fun CircuitDetailBottomSheet(
     evaluation: CircuitStatusEvaluation,
     snapshot: ScheduleSnapshot,
     nowMillis: Long,
+    use24h: Boolean = false,
+    zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
     onDismiss: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onSetPrimaryHome: (String) -> Unit,
@@ -74,16 +74,16 @@ fun CircuitDetailBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val statusColors = LocalElectricStatusColors.current
     val circuit = evaluation.circuit
-    val today = remember(nowMillis) {
-        Instant.ofEpochMilli(nowMillis).atZone(ScheduleEngine.HAVANA_ZONE).toLocalDate()
+    val today = remember(nowMillis, zoneId) {
+        Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
     }
     var selectedSegment by remember(evaluation.circuit.code) {
         mutableStateOf<TimelineSegment?>(
             evaluation.todaySegments.firstOrNull { nowMillis >= it.startMillis && nowMillis < it.endMillis }
         )
     }
-    val next7Days = remember(circuit.code, snapshot, today) {
-        ScheduleEngine.getTimelineForNextDays(circuit.code, snapshot, today, 7)
+    val next7Days = remember(circuit.code, snapshot, today, zoneId) {
+        ScheduleEngine.getTimelineForNextDays(circuit.code, snapshot, today, 7, zoneId)
     }
 
     val (accent, container, statusIcon, statusLabel) = when (evaluation.state) {
@@ -120,7 +120,6 @@ fun CircuitDetailBottomSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header: Code, custom name, favorite & primary home actions
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -208,7 +207,6 @@ fun CircuitDetailBottomSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // Prominent scheduled status card
             Surface(
                 color = container,
                 shape = RoundedCornerShape(18.dp),
@@ -251,7 +249,7 @@ fun CircuitDetailBottomSheet(
                             Column {
                                 Text("Inicio", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    ScheduleEngine.formatTime12h(evaluation.currentIntervalStartMillis),
+                                    ScheduleEngine.formatTime(evaluation.currentIntervalStartMillis, use24h, zoneId),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = JetBrainsMonoFontFamily
                                 )
@@ -259,7 +257,7 @@ fun CircuitDetailBottomSheet(
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("Finalización", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    ScheduleEngine.formatTime12h(evaluation.currentIntervalEndMillis),
+                                    ScheduleEngine.formatTime(evaluation.currentIntervalEndMillis, use24h, zoneId),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = JetBrainsMonoFontFamily
                                 )
@@ -279,9 +277,9 @@ fun CircuitDetailBottomSheet(
 
                     val nextServiceText = if (evaluation.nextServiceStartMillis != null && evaluation.nextServiceEndMillis != null) {
                         val nextDay = Instant.ofEpochMilli(evaluation.nextServiceStartMillis)
-                            .atZone(ScheduleEngine.HAVANA_ZONE).toLocalDate()
+                            .atZone(zoneId).toLocalDate()
                         val dayTag = if (nextDay == today) "Hoy" else ScheduleEngine.formatShortDate(nextDay)
-                        "$dayTag ${ScheduleEngine.formatTime12h(evaluation.nextServiceStartMillis)} – ${ScheduleEngine.formatTime12h(evaluation.nextServiceEndMillis)}"
+                        "$dayTag ${ScheduleEngine.formatTime(evaluation.nextServiceStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(evaluation.nextServiceEndMillis, use24h, zoneId)}"
                     } else {
                         "Según programación / Sin datos registrados"
                     }
@@ -307,7 +305,6 @@ fun CircuitDetailBottomSheet(
                 }
             }
 
-            // Relations
             if (evaluation.relations.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
@@ -338,9 +335,19 @@ fun CircuitDetailBottomSheet(
                 }
             }
 
-            // Today's 24h visual timeline
+            // Continuous endless 3D wheel timeline
+            Continuous3DTickerTimeline(
+                circuitCode = circuit.code,
+                snapshot = snapshot,
+                nowMillis = nowMillis,
+                use24h = use24h,
+                zoneId = zoneId,
+                onSegmentFocused = { selectedSegment = it }
+            )
+
+            // Today's 24h bar timeline
             Text(
-                text = "Línea de tiempo de hoy (24h)",
+                text = "Resumen de hoy (24h)",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -349,15 +356,16 @@ fun CircuitDetailBottomSheet(
                 segments = evaluation.todaySegments,
                 currentTimeMillis = nowMillis,
                 selectedSegment = selectedSegment,
+                use24h = use24h,
+                zoneId = zoneId,
                 onSegmentTap = { selectedSegment = it }
             )
             TimelineSegmentLegend()
-            selectedSegment?.let { seg ->
-                TimelineSegmentDetailCard(segment = seg)
-            }
             TimelineIntervalsSummaryList(
                 segments = evaluation.todaySegments,
                 selectedSegment = selectedSegment,
+                use24h = use24h,
+                zoneId = zoneId,
                 onSelect = { selectedSegment = it }
             )
 
@@ -376,7 +384,7 @@ fun CircuitDetailBottomSheet(
                         "Sin períodos de servicio"
                     } else {
                         serviceWindows.joinToString(", ") {
-                            "${ScheduleEngine.formatTime12h(it.startMillis)}–${ScheduleEngine.formatTime12h(it.endMillis)}"
+                            "${ScheduleEngine.formatTime(it.startMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(it.endMillis, use24h, zoneId)}"
                         }
                     }
                     Row(
@@ -403,7 +411,6 @@ fun CircuitDetailBottomSheet(
                 }
             }
 
-            // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)

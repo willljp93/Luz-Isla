@@ -251,3 +251,43 @@ data class ConfigBackupEntity(
     val reason: String,
     val payloadJson: String
 )
+
+@Entity(tableName = "rotation_cycles")
+data class RotationCycleEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String = "",
+    val serviceDurationMinutes: Int = 240,
+    val outageDurationMinutes: Int = 720,
+    val referenceEpochMillis: Long,
+    val orderedGroupIdsCsv: String = "",
+    val isActive: Boolean = true
+) {
+    fun toDomain(): com.example.domain.model.RotationCycle =
+        com.example.domain.model.RotationCycle(
+            id = id,
+            name = name,
+            description = description,
+            serviceDurationMinutes = serviceDurationMinutes,
+            outageDurationMinutes = outageDurationMinutes,
+            referenceEpochMillis = referenceEpochMillis,
+            orderedGroupIds = orderedGroupIdsCsv.split(",")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() },
+            isActive = isActive
+        )
+
+    companion object {
+        fun fromDomain(model: com.example.domain.model.RotationCycle): RotationCycleEntity =
+            RotationCycleEntity(
+                id = model.id,
+                name = model.name,
+                description = model.description,
+                serviceDurationMinutes = model.serviceDurationMinutes,
+                outageDurationMinutes = model.outageDurationMinutes,
+                referenceEpochMillis = model.referenceEpochMillis,
+                orderedGroupIdsCsv = model.orderedGroupIds.joinToString(","),
+                isActive = model.isActive
+            )
+    }
+}

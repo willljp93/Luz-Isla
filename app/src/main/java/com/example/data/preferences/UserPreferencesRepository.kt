@@ -19,9 +19,20 @@ import kotlinx.serialization.json.Json
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "luz_isla_prefs")
 
 data class UserPreferences(
+    val onboardingCompleted: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
     val compactHomeCards: Boolean = false,
+    val useSystemTimezone: Boolean = true,
+    val manualTimezoneId: String = "America/Havana",
+    val use24HourFormat: Boolean = false,
+    val sunriseMinutes: Int = 6 * 60 + 30,
+    val sunsetMinutes: Int = 18 * 60 + 30,
+    val enableElectricAnimations: Boolean = true,
+    val dynamicLauncherIconEnabled: Boolean = false,
+    val activeConfigVersion: Int = 1,
+    val activeConfigTimestampMillis: Long = 0L,
+    val activeConfigSource: String = "Configuración local inicial",
     val syncUrl: String = "",
     val autoSyncEnabled: Boolean = false,
     val syncIntervalHours: Int = 6,
@@ -41,9 +52,20 @@ data class UserPreferences(
 class UserPreferencesRepository(private val context: Context) {
 
     private object Keys {
+        val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val COMPACT_HOME_CARDS = booleanPreferencesKey("compact_home_cards")
+        val USE_SYSTEM_TIMEZONE = booleanPreferencesKey("use_system_timezone")
+        val MANUAL_TIMEZONE_ID = stringPreferencesKey("manual_timezone_id")
+        val USE_24_HOUR_FORMAT = booleanPreferencesKey("use_24_hour_format")
+        val SUNRISE_MINUTES = intPreferencesKey("sunrise_minutes")
+        val SUNSET_MINUTES = intPreferencesKey("sunset_minutes")
+        val ENABLE_ELECTRIC_ANIMATIONS = booleanPreferencesKey("enable_electric_animations")
+        val DYNAMIC_LAUNCHER_ICON = booleanPreferencesKey("dynamic_launcher_icon")
+        val ACTIVE_CONFIG_VERSION = intPreferencesKey("active_config_version")
+        val ACTIVE_CONFIG_TIMESTAMP = longPreferencesKey("active_config_timestamp")
+        val ACTIVE_CONFIG_SOURCE = stringPreferencesKey("active_config_source")
         val SYNC_URL = stringPreferencesKey("sync_url")
         val AUTO_SYNC_ENABLED = booleanPreferencesKey("auto_sync_enabled")
         val SYNC_INTERVAL_HOURS = intPreferencesKey("sync_interval_hours")
@@ -70,11 +92,22 @@ class UserPreferencesRepository(private val context: Context) {
             emptyMap()
         }
         UserPreferences(
+            onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
             themeMode = runCatching {
                 ThemeMode.valueOf(prefs[Keys.THEME_MODE] ?: ThemeMode.SYSTEM.name)
             }.getOrDefault(ThemeMode.SYSTEM),
             dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: false,
             compactHomeCards = prefs[Keys.COMPACT_HOME_CARDS] ?: false,
+            useSystemTimezone = prefs[Keys.USE_SYSTEM_TIMEZONE] ?: true,
+            manualTimezoneId = prefs[Keys.MANUAL_TIMEZONE_ID] ?: "America/Havana",
+            use24HourFormat = prefs[Keys.USE_24_HOUR_FORMAT] ?: false,
+            sunriseMinutes = prefs[Keys.SUNRISE_MINUTES] ?: (6 * 60 + 30),
+            sunsetMinutes = prefs[Keys.SUNSET_MINUTES] ?: (18 * 60 + 30),
+            enableElectricAnimations = prefs[Keys.ENABLE_ELECTRIC_ANIMATIONS] ?: true,
+            dynamicLauncherIconEnabled = prefs[Keys.DYNAMIC_LAUNCHER_ICON] ?: false,
+            activeConfigVersion = prefs[Keys.ACTIVE_CONFIG_VERSION] ?: 1,
+            activeConfigTimestampMillis = prefs[Keys.ACTIVE_CONFIG_TIMESTAMP] ?: 0L,
+            activeConfigSource = prefs[Keys.ACTIVE_CONFIG_SOURCE] ?: "Configuración local inicial",
             syncUrl = prefs[Keys.SYNC_URL].orEmpty(),
             autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: false,
             syncIntervalHours = prefs[Keys.SYNC_INTERVAL_HOURS] ?: 6,
@@ -94,6 +127,10 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun getSnapshot(): UserPreferences = preferencesFlow.first()
 
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.dataStore.edit { it[Keys.ONBOARDING_COMPLETED] = completed }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { it[Keys.THEME_MODE] = mode.name }
     }
@@ -104,6 +141,40 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun setCompactHomeCards(compact: Boolean) {
         context.dataStore.edit { it[Keys.COMPACT_HOME_CARDS] = compact }
+    }
+
+    suspend fun setTimezonePreference(useSystem: Boolean, manualTimezoneId: String) {
+        context.dataStore.edit {
+            it[Keys.USE_SYSTEM_TIMEZONE] = useSystem
+            it[Keys.MANUAL_TIMEZONE_ID] = manualTimezoneId.trim().ifEmpty { "America/Havana" }
+        }
+    }
+
+    suspend fun setUse24HourFormat(use24h: Boolean) {
+        context.dataStore.edit { it[Keys.USE_24_HOUR_FORMAT] = use24h }
+    }
+
+    suspend fun setDayNightTimes(sunriseMinutes: Int, sunsetMinutes: Int) {
+        context.dataStore.edit {
+            it[Keys.SUNRISE_MINUTES] = sunriseMinutes.coerceIn(0, 1439)
+            it[Keys.SUNSET_MINUTES] = sunsetMinutes.coerceIn(0, 1439)
+        }
+    }
+
+    suspend fun setEnableElectricAnimations(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ENABLE_ELECTRIC_ANIMATIONS] = enabled }
+    }
+
+    suspend fun setDynamicLauncherIconEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DYNAMIC_LAUNCHER_ICON] = enabled }
+    }
+
+    suspend fun recordActiveConfigMetadata(version: Int, timestampMillis: Long, source: String) {
+        context.dataStore.edit {
+            it[Keys.ACTIVE_CONFIG_VERSION] = version.coerceAtLeast(1)
+            it[Keys.ACTIVE_CONFIG_TIMESTAMP] = timestampMillis
+            it[Keys.ACTIVE_CONFIG_SOURCE] = source.trim().ifEmpty { "Configuración cargada" }
+        }
     }
 
     suspend fun setSyncConfig(url: String, autoSync: Boolean, intervalHours: Int) {
@@ -130,8 +201,12 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun markForecastUpdatedNow() {
+        val now = System.currentTimeMillis()
         context.dataStore.edit {
-            it[Keys.LAST_FORECAST_UPDATE_MILLIS] = System.currentTimeMillis()
+            it[Keys.LAST_FORECAST_UPDATE_MILLIS] = now
+            if ((it[Keys.ACTIVE_CONFIG_TIMESTAMP] ?: 0L) == 0L) {
+                it[Keys.ACTIVE_CONFIG_TIMESTAMP] = now
+            }
         }
     }
 

@@ -18,12 +18,37 @@ import com.example.notifications.ScheduleNotificationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.ZoneId
 
 object WidgetUpdateHelper {
 
     const val ACTION_WIDGET_REFRESH = "com.example.ACTION_WIDGET_REFRESH"
 
     suspend fun refreshAllWidgets(context: Context) = withContext(Dispatchers.IO) {
+        val db = AppDatabase.getInstance(context)
+        val prefsRepo = UserPreferencesRepository(context)
+        val repo = LuzIslaRepository(db, prefsRepo)
+        val prefs = prefsRepo.getSnapshot()
+        val snapshot = repo.getCurrentSnapshot()
+        val now = Instant.now()
+        val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+        val use24h = prefs.use24HourFormat
+
+        val activeCircuits = snapshot.circuits.filter { it.isActive }
+        val primaryCircuit = activeCircuits.firstOrNull { it.isPrimaryHome }
+            ?: activeCircuits.firstOrNull { it.isFavorite }
+            ?: activeCircuits.firstOrNull()
+
+        val primaryHomeCircuit = activeCircuits.firstOrNull { it.isPrimaryHome }
+        val primaryHomeState = primaryHomeCircuit?.let {
+            ScheduleEngine.evaluateCircuit(it, snapshot, now, zoneId).state
+        }
+        LauncherIconManager.syncLauncherIcon(
+            context = context,
+            dynamicEnabled = prefs.dynamicLauncherIconEnabled,
+            primaryHomeState = primaryHomeState
+        )
+
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val primaryIds = appWidgetManager.getAppWidgetIds(
             ComponentName(context, PrimaryFavoriteWidgetProvider::class.java)
@@ -33,18 +58,6 @@ object WidgetUpdateHelper {
         )
         if (primaryIds.isEmpty() && configurableIds.isEmpty()) return@withContext
 
-        val db = AppDatabase.getInstance(context)
-        val prefsRepo = UserPreferencesRepository(context)
-        val repo = LuzIslaRepository(db, prefsRepo)
-        val prefs = prefsRepo.getSnapshot()
-        val snapshot = repo.getCurrentSnapshot()
-        val now = Instant.now()
-
-        val activeCircuits = snapshot.circuits.filter { it.isActive }
-        val primaryCircuit = activeCircuits.firstOrNull { it.isPrimaryHome }
-            ?: activeCircuits.firstOrNull { it.isFavorite }
-            ?: activeCircuits.firstOrNull()
-
         primaryIds.forEach { widgetId ->
             val views = buildRemoteViews(
                 context = context,
@@ -52,6 +65,8 @@ object WidgetUpdateHelper {
                 circuitCode = primaryCircuit?.code,
                 snapshot = snapshot,
                 now = now,
+                zoneId = zoneId,
+                use24h = use24h,
                 providerClass = PrimaryFavoriteWidgetProvider::class.java
             )
             appWidgetManager.updateAppWidget(widgetId, views)
@@ -65,6 +80,8 @@ object WidgetUpdateHelper {
                 circuitCode = selectedCode,
                 snapshot = snapshot,
                 now = now,
+                zoneId = zoneId,
+                use24h = use24h,
                 providerClass = ConfigurableCircuitWidgetProvider::class.java
             )
             appWidgetManager.updateAppWidget(widgetId, views)
@@ -77,6 +94,8 @@ object WidgetUpdateHelper {
         circuitCode: String?,
         snapshot: com.example.domain.model.ScheduleSnapshot,
         now: Instant,
+        zoneId: ZoneId,
+        use24h: Boolean,
         providerClass: Class<*>
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_circuit_compact)
@@ -92,7 +111,7 @@ object WidgetUpdateHelper {
             views.setTextViewText(R.id.widget_remaining, "--:--:--")
             views.setTextViewText(R.id.widget_updated_at, "Sin conexión requerida")
         } else {
-            val eval = ScheduleEngine.evaluateCircuit(circuit, snapshot, now)
+            val eval = ScheduleEngine.evaluateCircuit(circuit, snapshot, now, zoneId)
             views.setTextViewText(R.id.widget_circuit_title, circuit.displayTitle())
 
             val (badgeText, badgeColor, remainingText) = when (eval.state) {
@@ -119,19 +138,18 @@ object WidgetUpdateHelper {
 
             val nextLine = when {
                 eval.state == ScheduledState.SERVICE_SCHEDULED && eval.currentIntervalEndMillis != null ->
-                    "Próxima interrupción: ${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                    "Próxima interrupción: ${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
                 eval.nextServiceStartMillis != null ->
-                    "Próximo servicio: ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)}"
+                    "Próximo servicio: ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)}"
                 else -> "Próximo cambio: Sin datos"
             }
             views.setTextViewText(R.id.widget_next_change, nextLine)
             views.setTextViewText(
                 R.id.widget_updated_at,
-                "Programado • Act. ${ScheduleEngine.formatTime12h(now.toEpochMilli())}"
+                "Programado • Act. ${ScheduleEngine.formatTime(now.toEpochMilli(), use24h, zoneId)}"
             )
         }
 
-        // Open circuit detail on widget tap
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             if (circuit != null) {
@@ -146,7 +164,6 @@ object WidgetUpdateHelper {
         )
         views.setOnClickPendingIntent(R.id.widget_root, openPi)
 
-        // Manual refresh button
         val refreshIntent = Intent(context, providerClass).apply {
             action = ACTION_WIDGET_REFRESH
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

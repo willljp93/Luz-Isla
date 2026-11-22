@@ -8,17 +8,20 @@ import com.example.domain.model.FixedScheduleRule
 import com.example.domain.model.IntervalKind
 import com.example.domain.model.ManualException
 import com.example.domain.model.RelationType
+import com.example.domain.model.RotationCycle
 import com.example.domain.model.RuleSource
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduleType
 import com.example.domain.model.ScheduledState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 
 class ScheduleEngineTest {
 
@@ -36,13 +39,12 @@ class ScheduleEngineTest {
             name = "Grupo 1",
             serviceDurationMinutes = 240,
             outageDurationMinutes = 720,
-            referenceEpochMillis = havanaMillis(refDate, 22, 0), // 22:00 Nov 30 -> 02:00 Dec 1
+            referenceEpochMillis = havanaMillis(refDate, 22, 0),
             phaseOffsetMinutes = 0
         )
         val circuit = Circuit(code = "A210", groupId = "g1", scheduleType = ScheduleType.ROTATING)
         val snapshot = ScheduleSnapshot(listOf(circuit), listOf(group), emptyList(), emptyList(), emptyList(), emptyList())
 
-        // At 23:00 Nov 30 -> still in first 4h service window [22:00 Nov 30, 02:00 Dec 1)
         val evalNight = ScheduleEngine.evaluateCircuit(
             circuit,
             snapshot,
@@ -51,7 +53,6 @@ class ScheduleEngineTest {
         assertEquals(ScheduledState.SERVICE_SCHEDULED, evalNight.state)
         assertEquals(3 * 3600_000L, evalNight.remainingMillis)
 
-        // At 01:00 Dec 1 -> still in service until 02:00 Dec 1
         val dec1 = LocalDate.of(2026, 12, 1)
         val evalDec1Early = ScheduleEngine.evaluateCircuit(
             circuit,
@@ -59,8 +60,6 @@ class ScheduleEngineTest {
             java.time.Instant.ofEpochMilli(havanaMillis(dec1, 1, 0))
         )
         assertEquals(ScheduledState.SERVICE_SCHEDULED, evalDec1Early.state)
-
-        // Next service after 02:00 Dec 1 + 12h outage = 14:00 Dec 1 .. 18:00 Dec 1
         assertEquals(havanaMillis(dec1, 14, 0), evalDec1Early.nextServiceStartMillis)
         assertEquals(havanaMillis(dec1, 18, 0), evalDec1Early.nextServiceEndMillis)
     }
@@ -75,7 +74,6 @@ class ScheduleEngineTest {
         val c2 = Circuit("C2", groupId = "g618", scheduleType = ScheduleType.ROTATING)
         val snapshot = ScheduleSnapshot(listOf(c1, c2), listOf(g39, g618), emptyList(), emptyList(), emptyList(), emptyList())
 
-        // C1 has service [00:00-03:00), [12:00-15:00)
         val segs1 = ScheduleEngine.getTimelineForDay("C1", snapshot, base)
         assertEquals(4, segs1.size)
         assertEquals(ScheduledState.SERVICE_SCHEDULED, segs1[0].state)
@@ -83,7 +81,6 @@ class ScheduleEngineTest {
         assertEquals(ScheduledState.OUTAGE_SCHEDULED, segs1[1].state)
         assertEquals(9 * 3600_000L, segs1[1].durationMillis)
 
-        // C2 offset +6h -> outage [00:00-06:00), service [06:00-12:00), outage [12:00-24:00)
         val evalC2 = ScheduleEngine.evaluateCircuit(c2, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(base, 7, 30)))
         assertEquals(ScheduledState.SERVICE_SCHEDULED, evalC2.state)
         assertEquals(havanaMillis(base, 12, 0), evalC2.currentIntervalEndMillis)
@@ -99,17 +96,14 @@ class ScheduleEngineTest {
 
         val snapshot = ScheduleSnapshot(listOf(circuit), emptyList(), listOf(fixed), listOf(forecast), listOf(exception), emptyList())
 
-        // 09:30 -> Fixed service
         val at0930 = ScheduleEngine.evaluateCircuit(circuit, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 9, 30)))
         assertEquals(ScheduledState.SERVICE_SCHEDULED, at0930.state)
         assertEquals(RuleSource.FIXED_RULE, at0930.ruleSource)
 
-        // 10:30 -> Explicit forecast outage overrides fixed service
         val at1030 = ScheduleEngine.evaluateCircuit(circuit, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 10, 30)))
         assertEquals(ScheduledState.OUTAGE_SCHEDULED, at1030.state)
         assertEquals(RuleSource.EXPLICIT_FORECAST, at1030.ruleSource)
 
-        // 11:30 -> Manual exception service overrides explicit forecast outage
         val at1130 = ScheduleEngine.evaluateCircuit(circuit, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 11, 30)))
         assertEquals(ScheduledState.SERVICE_SCHEDULED, at1130.state)
         assertEquals(RuleSource.MANUAL_EXCEPTION, at1130.ruleSource)
@@ -173,5 +167,43 @@ class ScheduleEngineTest {
         val evalSync = ScheduleEngine.evaluateCircuit(a081Sync, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 9, 0)))
         assertEquals(ScheduledState.OUTAGE_SCHEDULED, evalSync.state)
         assertTrue(evalSync.todaySegments.any { it.state == ScheduledState.SERVICE_SCHEDULED })
+    }
+
+    @Test
+    fun `rotation cycle math computes maxGroupsSupported and effectiveOutageMinutes accurately`() {
+        val cycle4x12 = RotationCycle(
+            id = "c1",
+            name = "4h / 12h",
+            serviceDurationMinutes = 240,
+            outageDurationMinutes = 720,
+            referenceEpochMillis = 0L,
+            orderedGroupIds = listOf("g1", "g2", "g3", "g4")
+        )
+        assertEquals(960, cycle4x12.totalCycleMinutes)
+        assertEquals(4, cycle4x12.maxGroupsSupported)
+        assertEquals(0, cycle4x12.remainderMinutes)
+        assertEquals(720, cycle4x12.effectiveOutageMinutes)
+
+        // When 5 groups of 4h try to share a 4h/12h cycle, effectiveOutageMinutes stretches to 4 * 240 = 960m to prevent overlap
+        val extendedCycle = cycle4x12.copy(orderedGroupIds = listOf("g1", "g2", "g3", "g4", "g5"))
+        assertEquals(960, extendedCycle.effectiveOutageMinutes)
+    }
+
+    @Test
+    fun `day night helper and 12h-24h formatting honor configured zoneId`() {
+        val date = LocalDate.of(2026, 11, 22)
+        val noonHavana = havanaMillis(date, 12, 30)
+        val nightHavana = havanaMillis(date, 22, 15)
+
+        assertTrue(ScheduleEngine.isDaytime(noonHavana, sunriseMinutes = 6 * 60 + 30, sunsetMinutes = 18 * 60 + 30))
+        assertFalse(ScheduleEngine.isDaytime(nightHavana, sunriseMinutes = 6 * 60 + 30, sunsetMinutes = 18 * 60 + 30))
+
+        assertEquals("12:30", ScheduleEngine.formatTime(noonHavana, use24h = true, zoneId = ScheduleEngine.HAVANA_ZONE))
+        assertEquals("22:15", ScheduleEngine.formatTime(nightHavana, use24h = true, zoneId = ScheduleEngine.HAVANA_ZONE))
+
+        // UTC+5h difference check
+        val madrid = ZoneId.of("Europe/Madrid")
+        val noonMadrid = ScheduleEngine.formatTime(noonHavana, use24h = true, zoneId = madrid)
+        assertEquals("18:30", noonMadrid)
     }
 }

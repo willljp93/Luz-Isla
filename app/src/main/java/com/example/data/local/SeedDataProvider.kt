@@ -114,6 +114,25 @@ object SeedDataProvider {
         )
     }
 
+    fun initialCycles(): List<RotationCycleEntity> {
+        val baseRef = LocalDate.of(2026, 11, 19)
+            .atStartOfDay(ScheduleEngine.HAVANA_ZONE)
+            .toInstant()
+            .toEpochMilli()
+        return listOf(
+            RotationCycleEntity(
+                id = "cycle_ejemplo_4_12",
+                name = "Ciclo 4h servicio / 12h afectación",
+                description = "Plantilla rotativa de ejemplo (admite hasta 4 grupos secuenciales cada 4h).",
+                serviceDurationMinutes = 240,
+                outageDurationMinutes = 720,
+                referenceEpochMillis = baseRef,
+                orderedGroupIdsCsv = "grp_ejemplo_1,grp_ejemplo_2,grp_ejemplo_3",
+                isActive = true
+            )
+        )
+    }
+
     fun initialRelations(): List<CircuitRelationEntity> = listOf(
         CircuitRelationEntity(
             id = "rel_a080_a060",

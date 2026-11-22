@@ -1,7 +1,6 @@
 package com.example.ui.screens.settings
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -10,6 +9,9 @@ import com.example.data.preferences.UserPreferences
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.ImportMergeMode
 import com.example.data.repository.LuzIslaRepository
+import com.example.domain.engine.ScheduleEngine
+import com.example.domain.model.ScheduleSnapshot
+import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.ForecastSyncWorker
@@ -19,7 +21,7 @@ import com.example.sync.SyncOutcome
 import com.example.transfer.ConfigCodec
 import com.example.transfer.DecodedConfigResult
 import com.example.transfer.ImportSummary
-import com.example.transfer.QrCodeUtils
+import com.example.widget.LauncherIconManager
 import com.example.widget.WidgetUpdateHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,13 +31,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 
 data class ExportBundle(
     val alphanumericCode: String,
     val jsonText: String,
-    val qrParts: List<String>,
-    val qrBitmaps: List<Bitmap>,
-    val isMultiPartQr: Boolean
+    val generatedAtMillis: Long,
+    val configVersion: Int
 )
 
 data class PendingImportReview(
@@ -47,6 +49,9 @@ data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
     val isSyncing: Boolean = false,
     val hasBackup: Boolean = false,
+    val hasPrimaryHome: Boolean = false,
+    val primaryHomeState: ScheduledState? = null,
+    val primaryHomeLabel: String = "",
     val exportBundle: ExportBundle? = null,
     val pendingImport: PendingImportReview? = null,
     val feedbackMessage: String? = null
@@ -65,26 +70,37 @@ class SettingsViewModel(
 
     private val syncManager = HttpsSyncManager(repository, prefsRepo)
 
-    val uiState: StateFlow<SettingsUiState> = combine(
+    private val prefsAndBackupsFlow = combine(
         prefsRepo.preferencesFlow,
         repository.backupsFlow,
+        repository.snapshotFlow
+    ) { prefs, backups, snapshot ->
+        Triple(prefs, backups.isNotEmpty(), snapshot)
+    }
+
+    val uiState: StateFlow<SettingsUiState> = combine(
+        prefsAndBackupsFlow,
         isSyncing,
         exportBundle,
         pendingImport,
         feedbackMessage
-    ) { values ->
-        val prefs = values[0] as UserPreferences
-        @Suppress("UNCHECKED_CAST")
-        val backups = values[1] as List<*>
-        val syncing = values[2] as Boolean
-        val export = values[3] as ExportBundle?
-        val pending = values[4] as PendingImportReview?
-        val msg = values[5] as String?
+    ) { base, syncing, export, pending, msg ->
+        val prefs = base.first
+        val hasBackup = base.second
+        val snapshot: ScheduleSnapshot = base.third
+        val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+        val primaryCircuit = snapshot.circuits.firstOrNull { it.isActive && it.isPrimaryHome }
+        val primaryEval = primaryCircuit?.let {
+            ScheduleEngine.evaluateCircuit(it, snapshot, Instant.now(), zoneId)
+        }
 
         SettingsUiState(
             prefs = prefs,
             isSyncing = syncing,
-            hasBackup = backups.isNotEmpty(),
+            hasBackup = hasBackup,
+            hasPrimaryHome = primaryCircuit != null,
+            primaryHomeState = primaryEval?.state,
+            primaryHomeLabel = primaryCircuit?.displayTitle().orEmpty(),
             exportBundle = export,
             pendingImport = pending,
             feedbackMessage = msg
@@ -101,6 +117,55 @@ class SettingsViewModel(
 
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { prefsRepo.setDynamicColor(enabled) }
+    }
+
+    fun setTimezonePreference(useSystem: Boolean, manualTimezoneId: String) {
+        viewModelScope.launch {
+            prefsRepo.setTimezonePreference(useSystem, manualTimezoneId)
+            ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
+            WidgetUpdateHelper.refreshAllWidgets(appContext)
+        }
+    }
+
+    fun setUse24HourFormat(use24h: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setUse24HourFormat(use24h)
+            WidgetUpdateHelper.refreshAllWidgets(appContext)
+        }
+    }
+
+    fun setDayNightTimes(sunriseMinutes: Int, sunsetMinutes: Int) {
+        viewModelScope.launch {
+            prefsRepo.setDayNightTimes(sunriseMinutes, sunsetMinutes)
+        }
+    }
+
+    fun setEnableElectricAnimations(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setEnableElectricAnimations(enabled)
+        }
+    }
+
+    fun setDynamicLauncherIconEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setDynamicLauncherIconEnabled(enabled)
+            LauncherIconManager.syncLauncherIcon(
+                context = appContext,
+                dynamicEnabled = enabled,
+                primaryHomeState = uiState.value.primaryHomeState
+            )
+            feedbackMessage.value = if (enabled) {
+                "Ícono dinámico activado. El lanzador puede tardar unos segundos en actualizarse."
+            } else {
+                "Ícono predeterminado de Luz Isla restaurado."
+            }
+        }
+    }
+
+    fun replayOnboarding() {
+        viewModelScope.launch {
+            prefsRepo.setOnboardingCompleted(false)
+        }
     }
 
     fun saveSyncSettings(url: String, autoSync: Boolean, intervalHours: Int) {
@@ -144,22 +209,21 @@ class SettingsViewModel(
         viewModelScope.launch {
             val bundle = withContext(Dispatchers.Default) {
                 val snapshot = repository.getCurrentSnapshot()
-                val version = uiState.value.prefs.lastRemoteConfigVersion.coerceAtLeast(1)
+                val version = uiState.value.prefs.activeConfigVersion.coerceAtLeast(1)
+                val nowMillis = System.currentTimeMillis()
                 val payload = ConfigCodec.snapshotToPayload(
                     snapshot = snapshot,
                     configVersion = version,
-                    includePersonalData = includePersonalData
+                    includePersonalData = includePersonalData,
+                    nowIso = Instant.ofEpochMilli(nowMillis).toString()
                 )
                 val jsonText = ConfigCodec.encodeToJson(payload, pretty = true)
                 val code = ConfigCodec.encodeToAlphanumericCode(payload)
-                val qrParts = ConfigCodec.buildQrPayloads(code)
-                val bitmaps = qrParts.map { QrCodeUtils.generateQrBitmap(it, 640) }
                 ExportBundle(
                     alphanumericCode = code,
                     jsonText = jsonText,
-                    qrParts = qrParts,
-                    qrBitmaps = bitmaps,
-                    isMultiPartQr = qrParts.size > 1
+                    generatedAtMillis = nowMillis,
+                    configVersion = version
                 )
             }
             exportBundle.value = bundle
@@ -228,7 +292,7 @@ class SettingsViewModel(
             val currentSnapshot = repository.getCurrentSnapshot()
             val backupPayload = ConfigCodec.snapshotToPayload(
                 snapshot = currentSnapshot,
-                configVersion = uiState.value.prefs.lastRemoteConfigVersion.coerceAtLeast(1),
+                configVersion = uiState.value.prefs.activeConfigVersion.coerceAtLeast(1),
                 includePersonalData = true,
                 sourceName = "Respaldo previo a importación"
             )
@@ -242,10 +306,18 @@ class SettingsViewModel(
                 mode = mode,
                 includePersonalFromIncoming = includePersonalFromIncoming
             )
+            val importedTs = ConfigCodec.parseGeneratedAtMillis(review.summary.generatedAtIso)
+                ?: System.currentTimeMillis()
+            prefsRepo.recordActiveConfigMetadata(
+                version = review.summary.configVersion,
+                timestampMillis = importedTs,
+                source = "Importado (${review.summary.sourceName})"
+            )
+
             ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
             WidgetUpdateHelper.refreshAllWidgets(appContext)
             pendingImport.value = null
-            feedbackMessage.value = "Configuración importada (${review.summary.circuitCount} circuitos)."
+            feedbackMessage.value = "Configuración v${review.summary.configVersion} importada (${review.summary.circuitCount} circuitos)."
         }
     }
 
@@ -266,6 +338,13 @@ class SettingsViewModel(
                     incoming = decoded.snapshot,
                     mode = ImportMergeMode.REPLACE_ALL_INCLUDING_PERSONAL,
                     includePersonalFromIncoming = true
+                )
+                val restoredTs = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso)
+                    ?: backup.createdAtMillis
+                prefsRepo.recordActiveConfigMetadata(
+                    version = decoded.payload.configVersion,
+                    timestampMillis = restoredTs,
+                    source = "Respaldo restaurado"
                 )
                 ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
                 WidgetUpdateHelper.refreshAllWidgets(appContext)

@@ -84,10 +84,12 @@ object ScheduleNotificationManager {
         }
 
         val snapshot = repo.getCurrentSnapshot()
+        val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+        val use24h = prefs.use24HourFormat
         val nowMillis = System.currentTimeMillis()
         val leadMillis = prefs.notifyLeadMinutes.coerceIn(5, 30) * 60_000L
         val horizonMillis = nowMillis + 24 * 60 * 60_000L
-        val today = LocalDate.now(ScheduleEngine.HAVANA_ZONE)
+        val today = LocalDate.now(zoneId)
 
         val targetCircuits = snapshot.circuits.filter { c ->
             c.isActive && (!prefs.notifyFavoritesOnly || c.isFavorite || c.isPrimaryHome)
@@ -102,8 +104,8 @@ object ScheduleNotificationManager {
 
         val alarms = mutableListOf<PlannedAlarm>()
         for (circuit in targetCircuits) {
-            val todaySegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today)
-            val tomorrowSegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today.plusDays(1))
+            val todaySegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today, zoneId)
+            val tomorrowSegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today.plusDays(1), zoneId)
             val combined = todaySegs + tomorrowSegs
 
             for (i in 1 until combined.size) {
@@ -114,7 +116,7 @@ object ScheduleNotificationManager {
                 val triggerAt = transitionMillis - leadMillis
                 if (triggerAt <= nowMillis || triggerAt > horizonMillis) continue
 
-                val timeStr = ScheduleEngine.formatTime12h(transitionMillis)
+                val timeStr = ScheduleEngine.formatTime(transitionMillis, use24h, zoneId)
                 when (curr.state) {
                     ScheduledState.SERVICE_SCHEDULED -> {
                         if (prefs.notifyServiceStart || prefs.notifyNextRestore) {
@@ -123,7 +125,7 @@ object ScheduleNotificationManager {
                                 triggerAtMillis = triggerAt,
                                 circuitCode = circuit.code,
                                 title = "${circuit.displayTitle()}: $verb en ${prefs.notifyLeadMinutes} min",
-                                body = "Servicio programado a partir de las $timeStr (hasta ${ScheduleEngine.formatTime12h(curr.endMillis)})."
+                                body = "Servicio programado a partir de las $timeStr (hasta ${ScheduleEngine.formatTime(curr.endMillis, use24h, zoneId)})."
                             )
                         }
                     }

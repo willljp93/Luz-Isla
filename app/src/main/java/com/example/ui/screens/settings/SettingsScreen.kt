@@ -5,7 +5,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,19 +21,17 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.QrCode2
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -49,7 +45,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,7 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -67,12 +61,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.repository.ImportMergeMode
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
-import com.example.ui.components.QrScannerDialog
+import com.example.ui.components.IslaEmblemBadge
+import com.example.ui.screens.onboarding.TimezonePickerDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import java.time.ZoneId
 
 @Composable
 fun SettingsScreen(
@@ -84,13 +79,19 @@ fun SettingsScreen(
     val clipboard = LocalClipboardManager.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var syncUrlInput by remember(state.prefs.syncUrl) { mutableStateOf(state.prefs.syncUrl) }
-    var autoSyncEnabled by remember(state.prefs.autoSyncEnabled) { mutableStateOf(state.prefs.autoSyncEnabled) }
-    var syncIntervalHours by remember(state.prefs.syncIntervalHours) { mutableIntStateOf(state.prefs.syncIntervalHours) }
+    val p = state.prefs
+    val activeZone = remember(p.useSystemTimezone, p.manualTimezoneId) {
+        ScheduleEngine.effectiveZone(p.useSystemTimezone, p.manualTimezoneId)
+    }
+
+    var syncUrlInput by remember(p.syncUrl) { mutableStateOf(p.syncUrl) }
+    var autoSyncEnabled by remember(p.autoSyncEnabled) { mutableStateOf(p.autoSyncEnabled) }
+    var syncIntervalHours by remember(p.syncIntervalHours) { mutableIntStateOf(p.syncIntervalHours) }
 
     var includePersonalInExport by remember { mutableStateOf(false) }
     var pasteCodeInput by remember { mutableStateOf("") }
-    var showQrScanner by remember { mutableStateOf(false) }
+    var showTimezoneDialog by remember { mutableStateOf(false) }
+    var showDayNightDialog by remember { mutableStateOf(false) }
 
     val openJsonLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -141,9 +142,131 @@ fun SettingsScreen(
                     )
                 }
 
-                // Appearance section
+                // Active configuration version and timestamp badge
+                item(key = "active_config_version_card") {
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Configuración activa: v${p.activeConfigVersion}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface
+                                ) {
+                                    Text(
+                                        text = if (p.use24HourFormat) "24h" else "12h",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Origen: ${p.activeConfigSource}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            val timestampLabel = if (p.activeConfigTimestampMillis > 0L) {
+                                ScheduleEngine.formatDateTimeReadable(
+                                    p.activeConfigTimestampMillis,
+                                    p.use24HourFormat,
+                                    activeZone
+                                )
+                            } else {
+                                "Base inicial incorporada"
+                            }
+                            Text(
+                                text = "Fecha/hora de carga: $timestampLabel",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Timezone & Clock Format
+                item(key = "timezone_format_card") {
+                    SettingsSectionCard(title = "Zona horaria y formato de hora") {
+                        Text("Zona horaria", style = MaterialTheme.typography.labelLarge)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = p.useSystemTimezone,
+                                onClick = { viewModel.setTimezonePreference(true, p.manualTimezoneId) },
+                                label = { Text("Automática (${ZoneId.systemDefault().id})") }
+                            )
+                            FilterChip(
+                                selected = !p.useSystemTimezone,
+                                onClick = {
+                                    viewModel.setTimezonePreference(false, p.manualTimezoneId)
+                                    showTimezoneDialog = true
+                                },
+                                label = { Text("Manual") }
+                            )
+                        }
+
+                        if (!p.useSystemTimezone) {
+                            OutlinedButton(
+                                onClick = { showTimezoneDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.Public, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Zona manual: ${p.manualTimezoneId}")
+                            }
+                        }
+
+                        Text("Formato de reloj", style = MaterialTheme.typography.labelLarge)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = !p.use24HourFormat,
+                                onClick = { viewModel.setUse24HourFormat(false) },
+                                leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("12 horas (AM/PM)") }
+                            )
+                            FilterChip(
+                                selected = p.use24HourFormat,
+                                onClick = { viewModel.setUse24HourFormat(true) },
+                                leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("24 horas") }
+                            )
+                        }
+
+                        Text(
+                            text = "Hora actual en zona activa: ${ScheduleEngine.formatTime(System.currentTimeMillis(), p.use24HourFormat, activeZone)} (${activeZone.id})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Appearance, Day/Night, Animations & Dynamic Launcher Icon
                 item(key = "appearance_card") {
-                    SettingsSectionCard(title = "Apariencia") {
+                    SettingsSectionCard(title = "Apariencia, Día/Noche e Ícono") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -156,46 +279,97 @@ fun SettingsScreen(
                                 ThemeMode.SYSTEM to "Automático"
                             ).forEach { (mode, label) ->
                                 FilterChip(
-                                    selected = state.prefs.themeMode == mode,
+                                    selected = p.themeMode == mode,
                                     onClick = { viewModel.setThemeMode(mode) },
                                     label = { Text(label) }
                                 )
                             }
                         }
+
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            SettingSwitchRow(
+                                label = "Colores dinámicos del sistema (Android 12+)",
+                                checked = p.dynamicColor,
+                                onCheckedChange = viewModel::setDynamicColor
+                            )
+                        }
+
+                        SettingSwitchRow(
+                            label = "Animaciones sutiles de estado eléctrico",
+                            checked = p.enableElectricAnimations,
+                            onCheckedChange = viewModel::setEnableElectricAnimations
+                        )
+
+                        OutlinedButton(
+                            onClick = { showDayNightDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Filled.WbTwilight, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Día / Noche: ${ScheduleEngine.formatMinuteOfDay(p.sunriseMinutes, p.use24HourFormat)} – ${ScheduleEngine.formatMinuteOfDay(p.sunsetMinutes, p.use24HourFormat)}"
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.padding(12.dp)
                             ) {
-                                Text("Colores dinámicos del sistema (Android 12+)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                IslaEmblemBadge(
+                                    state = if (p.dynamicLauncherIconEnabled) state.primaryHomeState else null,
+                                    enableAnimation = p.enableElectricAnimations,
+                                    size = 48.dp
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Ícono dinámico del lanzador",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (state.hasPrimaryHome) {
+                                            "Vinculado a ${state.primaryHomeLabel}: verde con servicio, rojo sin servicio, amarillo predeterminado."
+                                        } else {
+                                            "Marca un circuito como 'Mi vivienda' en Inicio para que el ícono cambie según su estado."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Switch(
-                                    checked = state.prefs.dynamicColor,
-                                    onCheckedChange = viewModel::setDynamicColor
+                                    checked = p.dynamicLauncherIconEnabled,
+                                    onCheckedChange = viewModel::setDynamicLauncherIconEnabled
                                 )
                             }
+                        }
+
+                        OutlinedButton(
+                            onClick = viewModel::replayOnboarding,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_replay_onboarding_button")
+                        ) {
+                            Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Repetir asistente de configuración inicial")
                         }
                     }
                 }
 
-                // Export / Import section
+                // Export / Import section (JSON & Alphanumeric ONLY — no QR)
                 item(key = "transfer_card") {
-                    SettingsSectionCard(title = "Exportar e Importar (Sin conexión)") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Incluir mis favoritos, nombres y comentarios al exportar",
-                                style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Switch(
-                                checked = includePersonalInExport,
-                                onCheckedChange = { includePersonalInExport = it }
-                            )
-                        }
+                    SettingsSectionCard(title = "Exportar e Importar (JSON y Código)") {
+                        SettingSwitchRow(
+                            label = "Incluir mis favoritos, nombres y comentarios al exportar",
+                            checked = includePersonalInExport,
+                            onCheckedChange = { includePersonalInExport = it }
+                        )
 
                         Button(
                             onClick = { viewModel.generateExport(includePersonalInExport) },
@@ -203,9 +377,9 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .testTag("export_generate_button")
                         ) {
-                            Icon(Icons.Filled.QrCode2, contentDescription = null)
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Generar código alfanumérico, QR o JSON")
+                            Text("Exportar código alfanumérico o JSON")
                         }
 
                         OutlinedTextField(
@@ -234,26 +408,15 @@ fun SettingsScreen(
                                 Text("Validar código")
                             }
                             OutlinedButton(
-                                onClick = { showQrScanner = true },
+                                onClick = { openJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .testTag("import_qr_button")
+                                    .testTag("import_json_button")
                             ) {
-                                Icon(Icons.Filled.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Escanear QR")
+                                Text("Importar JSON")
                             }
-                        }
-
-                        OutlinedButton(
-                            onClick = { openJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("import_json_button")
-                        ) {
-                            Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Importar desde archivo JSON")
                         }
 
                         if (state.hasBackup) {
@@ -283,20 +446,14 @@ fun SettingsScreen(
                                 .testTag("sync_url_input")
                         )
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Sincronización automática en segundo plano", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            Switch(
-                                checked = autoSyncEnabled,
-                                onCheckedChange = {
-                                    autoSyncEnabled = it
-                                    viewModel.saveSyncSettings(syncUrlInput, it, syncIntervalHours)
-                                }
-                            )
-                        }
+                        SettingSwitchRow(
+                            label = "Sincronización automática en segundo plano",
+                            checked = autoSyncEnabled,
+                            onCheckedChange = {
+                                autoSyncEnabled = it
+                                viewModel.saveSyncSettings(syncUrlInput, it, syncIntervalHours)
+                            }
+                        )
 
                         Row(
                             modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -341,13 +498,13 @@ fun SettingsScreen(
                             }
                         }
 
-                        val lastSyncStr = if (state.prefs.lastSyncEpochMillis > 0L) {
-                            "Última descarga: ${ScheduleEngine.formatTime12h(state.prefs.lastSyncEpochMillis)} • v${state.prefs.lastRemoteConfigVersion}"
+                        val lastSyncStr = if (p.lastSyncEpochMillis > 0L) {
+                            "Última descarga: ${ScheduleEngine.formatDateTimeReadable(p.lastSyncEpochMillis, p.use24HourFormat, activeZone)} • v${p.lastRemoteConfigVersion}"
                         } else {
                             "Sin descargas recientes"
                         }
                         Text(
-                            text = "$lastSyncStr\n${state.prefs.lastSyncStatus}",
+                            text = "$lastSyncStr\n${p.lastSyncStatus}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -357,7 +514,6 @@ fun SettingsScreen(
                 // Local Notifications section
                 item(key = "notifications_card") {
                     SettingsSectionCard(title = "Notificaciones locales") {
-                        val p = state.prefs
                         fun ensurePermAndSave(
                             start: Boolean = p.notifyServiceStart,
                             end: Boolean = p.notifyServiceEnd,
@@ -374,19 +530,19 @@ fun SettingsScreen(
                             viewModel.updateNotificationPrefs(start, end, restore, forecast, lead, favOnly)
                         }
 
-                        NotifSwitch("Aviso de inicio de servicio", p.notifyServiceStart) {
+                        SettingSwitchRow("Aviso de inicio de servicio", p.notifyServiceStart) {
                             ensurePermAndSave(start = it)
                         }
-                        NotifSwitch("Aviso de finalización del servicio", p.notifyServiceEnd) {
+                        SettingSwitchRow("Aviso de finalización del servicio", p.notifyServiceEnd) {
                             ensurePermAndSave(end = it)
                         }
-                        NotifSwitch("Aviso de próximo restablecimiento", p.notifyNextRestore) {
+                        SettingSwitchRow("Aviso de próximo restablecimiento", p.notifyNextRestore) {
                             ensurePermAndSave(restore = it)
                         }
-                        NotifSwitch("Aviso de nuevo pronóstico descargado", p.notifyNewForecast) {
+                        SettingSwitchRow("Aviso de nuevo pronóstico descargado", p.notifyNewForecast) {
                             ensurePermAndSave(forecast = it)
                         }
-                        NotifSwitch("Solo para mis circuitos favoritos", p.notifyFavoritesOnly) {
+                        SettingSwitchRow("Solo para mis circuitos favoritos", p.notifyFavoritesOnly) {
                             ensurePermAndSave(favOnly = it)
                         }
 
@@ -438,176 +594,52 @@ fun SettingsScreen(
         }
     }
 
-    // Export modal dialog (Code + QR / Multi-part QR + Save JSON)
     state.exportBundle?.let { bundle ->
-        var currentQrIndex by remember(bundle) { mutableIntStateOf(0) }
-        AlertDialog(
-            onDismissRequest = viewModel::dismissExportBundle,
-            title = { Text("Exportación generada") },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (bundle.isMultiPartQr) {
-                        Text(
-                            text = "Configuración grande: dividida en ${bundle.qrBitmaps.size} códigos QR numerados sin truncar datos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    bundle.qrBitmaps.getOrNull(currentQrIndex)?.let { bmp ->
-                        Image(
-                            bitmap = bmp.asImageBitmap(),
-                            contentDescription = "Código QR de configuración",
-                            modifier = Modifier.size(220.dp)
-                        )
-                    }
-                    if (bundle.qrBitmaps.size > 1) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { if (currentQrIndex > 0) currentQrIndex-- },
-                                enabled = currentQrIndex > 0
-                            ) { Text("Anterior") }
-                            Text(
-                                text = "Parte ${currentQrIndex + 1} / ${bundle.qrBitmaps.size}",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            OutlinedButton(
-                                onClick = { if (currentQrIndex < bundle.qrBitmaps.lastIndex) currentQrIndex++ },
-                                enabled = currentQrIndex < bundle.qrBitmaps.lastIndex
-                            ) { Text("Siguiente") }
-                        }
-                    }
-
-                    Text(
-                        text = "Código alfanumérico (${bundle.alphanumericCode.length} caracteres):",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainer,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = bundle.alphanumericCode.take(180) + if (bundle.alphanumericCode.length > 180) "…" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = { clipboard.setText(AnnotatedString(bundle.alphanumericCode)) },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Copiar")
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.shareTextCode(bundle.alphanumericCode) },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Compartir")
-                        }
-                    }
-                    Button(
-                        onClick = { saveJsonLauncher.launch("luz_isla_config.json") },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Guardar como archivo JSON")
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::dismissExportBundle) { Text("Cerrar") }
-            }
+        ExportConfigDialog(
+            bundle = bundle,
+            use24h = p.use24HourFormat,
+            zoneId = activeZone,
+            onCopyCode = { clipboard.setText(AnnotatedString(it)) },
+            onShareCode = viewModel::shareTextCode,
+            onSaveJson = { suggestedName -> saveJsonLauncher.launch(suggestedName) },
+            onDismiss = viewModel::dismissExportBundle
         )
     }
 
-    // Import Summary & Merge/Replace Confirmation Dialog
     state.pendingImport?.let { review ->
-        val s = review.summary
-        var includePersonal by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = viewModel::dismissPendingImport,
-            title = { Text("Resumen de importación") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Origen: ${s.sourceName} (v${s.configVersion})", fontWeight = FontWeight.Bold)
-                    Text("• Circuitos: ${s.circuitCount}")
-                    Text("• Grupos rotativos: ${s.groupCount}")
-                    Text("• Horarios fijos: ${s.fixedRuleCount}")
-                    Text("• Pronósticos por fecha: ${s.forecastCount}")
-                    Text("• Excepciones: ${s.exceptionCount} • Relaciones: ${s.relationCount}")
-                    Text(
-                        text = if (s.sha256Verified) "Integridad SHA-256: Verificada correctamente" else "Integridad SHA-256: No incluida en JSON externo",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    if (s.includesPersonalData) {
-                        NotifSwitch("Importar también favoritos y nombres personales", includePersonal) {
-                            includePersonal = it
-                        }
-                    }
-                    Text(
-                        text = "Se guardará un respaldo automático de tu configuración actual antes de aplicar los cambios.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        ImportReviewDialog(
+            review = review,
+            use24h = p.use24HourFormat,
+            zoneId = activeZone,
+            onConfirm = { mode, includePersonal ->
+                viewModel.confirmPendingImport(mode, includePersonal)
+                pasteCodeInput = ""
             },
-            confirmButton = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Button(
-                        onClick = {
-                            viewModel.confirmPendingImport(ImportMergeMode.MERGE_KEEP_PERSONAL, includePersonal)
-                            pasteCodeInput = ""
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Combinar (conservar mis datos)")
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.confirmPendingImport(ImportMergeMode.REPLACE_SCHEDULE_KEEP_PERSONAL, includePersonal)
-                            pasteCodeInput = ""
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Reemplazar programación")
-                    }
-                    TextButton(
-                        onClick = viewModel::dismissPendingImport,
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Text("Cancelar")
-                    }
-                }
-            }
+            onDismiss = viewModel::dismissPendingImport
         )
     }
 
-    if (showQrScanner) {
-        QrScannerDialog(
-            onCodeAssembled = { code ->
-                showQrScanner = false
-                pasteCodeInput = code
-                viewModel.inspectAlphanumericCode(code)
+    if (showTimezoneDialog) {
+        TimezonePickerDialog(
+            currentZoneId = p.manualTimezoneId,
+            onSelect = { zoneIdStr ->
+                viewModel.setTimezonePreference(useSystem = false, manualTimezoneId = zoneIdStr)
+                showTimezoneDialog = false
             },
-            onDismiss = { showQrScanner = false }
+            onDismiss = { showTimezoneDialog = false }
+        )
+    }
+
+    if (showDayNightDialog) {
+        DayNightTimeDialog(
+            initialSunriseMinutes = p.sunriseMinutes,
+            initialSunsetMinutes = p.sunsetMinutes,
+            use24h = p.use24HourFormat,
+            onSave = { sunrise, sunset ->
+                viewModel.setDayNightTimes(sunrise, sunset)
+                showDayNightDialog = false
+            },
+            onDismiss = { showDayNightDialog = false }
         )
     }
 }
@@ -634,7 +666,7 @@ private fun SettingsSectionCard(
 }
 
 @Composable
-private fun NotifSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SettingSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,

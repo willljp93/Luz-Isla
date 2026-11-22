@@ -17,10 +17,15 @@ import java.io.File
 import java.io.FileOutputStream
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 object ShareHelper {
 
-    fun buildSingleCircuitMessage(eval: CircuitStatusEvaluation): String {
+    fun buildSingleCircuitMessage(
+        eval: CircuitStatusEvaluation,
+        use24h: Boolean = false,
+        zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE
+    ): String {
         val header = "⚡ *Luz Isla – Circuito ${eval.circuit.displayTitle()}*"
         val stateLabel = when (eval.state) {
             ScheduledState.SERVICE_SCHEDULED -> "✅ Estado programado: CON SERVICIO"
@@ -28,7 +33,7 @@ object ShareHelper {
             ScheduledState.UNKNOWN -> "❔ Estado programado: Sin información disponible"
         }
         val currentWindow = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-            "🕒 Período actual: ${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)} – ${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+            "🕒 Período actual: ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
         } else {
             "🕒 Período actual: Según programación"
         }
@@ -36,7 +41,7 @@ object ShareHelper {
             "⏳ Tiempo restante: ${ScheduleEngine.formatDurationHms(it)}"
         } ?: ""
         val nextService = if (eval.nextServiceStartMillis != null && eval.nextServiceEndMillis != null) {
-            "🔜 Próximo servicio: ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)} – ${ScheduleEngine.formatTime12h(eval.nextServiceEndMillis)}"
+            "🔜 Próximo servicio: ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(eval.nextServiceEndMillis, use24h, zoneId)}"
         } else {
             "🔜 Próximo servicio: Sin datos registrados"
         }
@@ -46,8 +51,13 @@ object ShareHelper {
             .joinToString("\n")
     }
 
-    fun buildListMessage(title: String, evaluations: List<CircuitStatusEvaluation>): String {
-        val today = LocalDate.now(ScheduleEngine.HAVANA_ZONE)
+    fun buildListMessage(
+        title: String,
+        evaluations: List<CircuitStatusEvaluation>,
+        use24h: Boolean = false,
+        zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE
+    ): String {
+        val today = LocalDate.now(zoneId)
         val header = "⚡ *Luz Isla – $title*\n📅 ${ScheduleEngine.formatDateEs(today)} (Hora local)\n"
         if (evaluations.isEmpty()) {
             return "$header\nNo hay circuitos en esta selección."
@@ -64,22 +74,26 @@ object ShareHelper {
                 ScheduledState.UNKNOWN -> "Sin info"
             }
             val window = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                " (${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)}–${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)})"
+                " (${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)})"
             } else ""
             val next = if (eval.state != ScheduledState.SERVICE_SCHEDULED && eval.nextServiceStartMillis != null) {
-                " | Próx: ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)}"
+                " | Próx: ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)}"
             } else ""
             "$icon *${eval.circuit.displayTitle()}*: $stateWord$window$next"
         }
         return "$header\n$lines\n\n_Generado desde Luz Isla (herramienta comunitaria)._"
     }
 
-    fun buildUpcomingMessage(evaluations: List<CircuitStatusEvaluation>): String {
+    fun buildUpcomingMessage(
+        evaluations: List<CircuitStatusEvaluation>,
+        use24h: Boolean = false,
+        zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE
+    ): String {
         val header = "🕒 *Luz Isla – Próximos horarios de servicio*\n"
         val lines = evaluations.joinToString("\n") { eval ->
             val nextStr = if (eval.nextServiceStartMillis != null && eval.nextServiceEndMillis != null) {
-                val startDay = Instant.ofEpochMilli(eval.nextServiceStartMillis).atZone(ScheduleEngine.HAVANA_ZONE).toLocalDate()
-                "${ScheduleEngine.formatShortDate(startDay)} ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)}–${ScheduleEngine.formatTime12h(eval.nextServiceEndMillis)}"
+                val startDay = Instant.ofEpochMilli(eval.nextServiceStartMillis).atZone(zoneId).toLocalDate()
+                "${ScheduleEngine.formatShortDate(startDay)} ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(eval.nextServiceEndMillis, use24h, zoneId)}"
             } else {
                 "Sin pronóstico próximo"
             }
@@ -100,9 +114,11 @@ object ShareHelper {
     fun shareSummaryImage(
         context: Context,
         title: String,
-        evaluations: List<CircuitStatusEvaluation>
+        evaluations: List<CircuitStatusEvaluation>,
+        use24h: Boolean = false,
+        zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE
     ) {
-        val uri = renderSummaryBitmapToUri(context, title, evaluations)
+        val uri = renderSummaryBitmapToUri(context, title, evaluations, use24h, zoneId)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -115,7 +131,9 @@ object ShareHelper {
     fun renderSummaryBitmapToUri(
         context: Context,
         title: String,
-        evaluations: List<CircuitStatusEvaluation>
+        evaluations: List<CircuitStatusEvaluation>,
+        use24h: Boolean = false,
+        zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE
     ): Uri {
         val items = evaluations.take(18)
         val width = 1080
@@ -140,10 +158,10 @@ object ShareHelper {
             color = Color.parseColor("#D8EFE6")
             textSize = 28f
         }
-        val now = Instant.now().atZone(ScheduleEngine.HAVANA_ZONE)
+        val now = Instant.now().atZone(zoneId)
         canvas.drawText("Luz Isla – $title", 48f, 88f, titlePaint)
         canvas.drawText(
-            "${ScheduleEngine.formatDateEs(now.toLocalDate())} • ${ScheduleEngine.formatTime12h(now.toInstant().toEpochMilli())}",
+            "${ScheduleEngine.formatDateEs(now.toLocalDate())} • ${ScheduleEngine.formatTime(now.toInstant().toEpochMilli(), use24h, zoneId)}",
             48f,
             142f,
             subtitlePaint
@@ -180,7 +198,7 @@ object ShareHelper {
 
             canvas.drawText(eval.circuit.displayTitle().take(28), 64f, top + 38f, codePaint)
             val subText = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                "${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)} – ${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                "${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
             } else {
                 "Sin intervalo registrado"
             }

@@ -30,6 +30,28 @@ object ScheduleEngine {
     private const val MINUTES_PER_DAY = 1440
     private const val LOOKAHEAD_DAYS = 14L
 
+    fun effectiveZone(useSystemTimezone: Boolean, manualTimezoneId: String): ZoneId {
+        if (useSystemTimezone) return ZoneId.systemDefault()
+        return runCatching { ZoneId.of(manualTimezoneId.trim()) }.getOrDefault(HAVANA_ZONE)
+    }
+
+    fun isDaytime(
+        nowMillis: Long,
+        sunriseMinutes: Int,
+        sunsetMinutes: Int,
+        zoneId: ZoneId = HAVANA_ZONE
+    ): Boolean {
+        val lt = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalTime()
+        val nowMin = lt.hour * 60 + lt.minute
+        val sr = sunriseMinutes.coerceIn(0, MINUTES_PER_DAY - 1)
+        val ss = sunsetMinutes.coerceIn(0, MINUTES_PER_DAY - 1)
+        return if (sr < ss) {
+            nowMin in sr until ss
+        } else {
+            nowMin >= sr || nowMin < ss
+        }
+    }
+
     private data class CandidateInterval(
         val startMillis: Long,
         val endMillis: Long,
@@ -44,21 +66,23 @@ object ScheduleEngine {
     fun evaluateCircuit(
         circuit: Circuit,
         snapshot: ScheduleSnapshot,
-        atInstant: Instant = Instant.now()
+        atInstant: Instant = Instant.now(),
+        zoneId: ZoneId = HAVANA_ZONE
     ): CircuitStatusEvaluation {
         val nowMillis = atInstant.toEpochMilli()
-        val zdt = atInstant.atZone(HAVANA_ZONE)
+        val zdt = atInstant.atZone(zoneId)
         val today = zdt.toLocalDate()
-        val todayStart = today.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-        val todayEnd = today.plusDays(1).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+        val todayStart = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val todayEnd = today.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        val lookaheadEnd = today.plusDays(LOOKAHEAD_DAYS).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+        val lookaheadEnd = today.plusDays(LOOKAHEAD_DAYS).atStartOfDay(zoneId).toInstant().toEpochMilli()
         val fullTimeline = buildTimelineForRange(
             circuitCode = circuit.code,
             snapshot = snapshot,
             rangeStartMillis = todayStart,
             rangeEndMillis = lookaheadEnd,
-            visitedCircuits = emptySet()
+            visitedCircuits = emptySet(),
+            zoneId = zoneId
         )
 
         val todaySegments = clipSegments(fullTimeline, todayStart, todayEnd)
@@ -115,16 +139,35 @@ object ScheduleEngine {
     fun getTimelineForDay(
         circuitCode: String,
         snapshot: ScheduleSnapshot,
-        date: LocalDate
+        date: LocalDate,
+        zoneId: ZoneId = HAVANA_ZONE
     ): List<TimelineSegment> {
-        val startMillis = date.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-        val endMillis = date.plusDays(1).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+        val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
         return buildTimelineForRange(
             circuitCode = circuitCode,
             snapshot = snapshot,
             rangeStartMillis = startMillis,
             rangeEndMillis = endMillis,
-            visitedCircuits = emptySet()
+            visitedCircuits = emptySet(),
+            zoneId = zoneId
+        )
+    }
+
+    fun getTimelineForRange(
+        circuitCode: String,
+        snapshot: ScheduleSnapshot,
+        rangeStartMillis: Long,
+        rangeEndMillis: Long,
+        zoneId: ZoneId = HAVANA_ZONE
+    ): List<TimelineSegment> {
+        return buildTimelineForRange(
+            circuitCode = circuitCode,
+            snapshot = snapshot,
+            rangeStartMillis = rangeStartMillis,
+            rangeEndMillis = rangeEndMillis,
+            visitedCircuits = emptySet(),
+            zoneId = zoneId
         )
     }
 
@@ -132,32 +175,35 @@ object ScheduleEngine {
         circuitCode: String,
         snapshot: ScheduleSnapshot,
         startDate: LocalDate,
-        days: Int = 7
+        days: Int = 7,
+        zoneId: ZoneId = HAVANA_ZONE
     ): Map<LocalDate, List<TimelineSegment>> {
         val safeDays = days.coerceIn(1, 31)
-        val rangeStart = startDate.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-        val rangeEnd = startDate.plusDays(safeDays.toLong()).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+        val rangeStart = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val rangeEnd = startDate.plusDays(safeDays.toLong()).atStartOfDay(zoneId).toInstant().toEpochMilli()
         val merged = buildTimelineForRange(
             circuitCode = circuitCode,
             snapshot = snapshot,
             rangeStartMillis = rangeStart,
             rangeEndMillis = rangeEnd,
-            visitedCircuits = emptySet()
+            visitedCircuits = emptySet(),
+            zoneId = zoneId
         )
         return (0 until safeDays).associate { offset ->
             val day = startDate.plusDays(offset.toLong())
-            val dStart = day.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-            val dEnd = day.plusDays(1).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+            val dStart = day.atStartOfDay(zoneId).toInstant().toEpochMilli()
+            val dEnd = day.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
             day to clipSegments(merged, dStart, dEnd)
         }
     }
 
     fun getGroupTimelineForDay(
         group: ScheduleGroup,
-        date: LocalDate
+        date: LocalDate,
+        zoneId: ZoneId = HAVANA_ZONE
     ): List<TimelineSegment> {
-        val startMillis = date.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-        val endMillis = date.plusDays(1).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+        val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
         val candidates = generateRotatingCandidates(group, startMillis, endMillis)
         return resolveCandidatesToSegments(candidates, startMillis, endMillis)
     }
@@ -167,7 +213,8 @@ object ScheduleEngine {
         snapshot: ScheduleSnapshot,
         rangeStartMillis: Long,
         rangeEndMillis: Long,
-        visitedCircuits: Set<String>
+        visitedCircuits: Set<String>,
+        zoneId: ZoneId
     ): List<TimelineSegment> {
         if (rangeEndMillis <= rangeStartMillis) return emptyList()
         val normalizedCode = circuitCode.trim()
@@ -187,8 +234,8 @@ object ScheduleEngine {
 
         val candidates = mutableListOf<CandidateInterval>()
 
-        val startDate = Instant.ofEpochMilli(rangeStartMillis).atZone(HAVANA_ZONE).toLocalDate().minusDays(1)
-        val endDate = Instant.ofEpochMilli(rangeEndMillis).atZone(HAVANA_ZONE).toLocalDate().plusDays(1)
+        val startDate = Instant.ofEpochMilli(rangeStartMillis).atZone(zoneId).toLocalDate().minusDays(1)
+        val endDate = Instant.ofEpochMilli(rangeEndMillis).atZone(zoneId).toLocalDate().plusDays(1)
 
         // Priority 1: Manual Exceptions
         snapshot.manualExceptions
@@ -196,7 +243,7 @@ object ScheduleEngine {
             .forEach { ex ->
                 val exDate = LocalDate.ofEpochDay(ex.dateEpochDay)
                 if (!exDate.isBefore(startDate) && !exDate.isAfter(endDate)) {
-                    val (s, e) = resolveDateMinuteSpan(exDate, ex.startMinuteOfDay, ex.endMinuteOfDay)
+                    val (s, e) = resolveDateMinuteSpan(exDate, ex.startMinuteOfDay, ex.endMinuteOfDay, zoneId)
                     if (e > rangeStartMillis && s < rangeEndMillis) {
                         candidates += CandidateInterval(
                             startMillis = maxOf(s, rangeStartMillis),
@@ -218,7 +265,7 @@ object ScheduleEngine {
             .forEach { fc ->
                 val fcDate = LocalDate.ofEpochDay(fc.dateEpochDay)
                 if (!fcDate.isBefore(startDate) && !fcDate.isAfter(endDate)) {
-                    val (s, e) = resolveDateMinuteSpan(fcDate, fc.startMinuteOfDay, fc.endMinuteOfDay)
+                    val (s, e) = resolveDateMinuteSpan(fcDate, fc.startMinuteOfDay, fc.endMinuteOfDay, zoneId)
                     if (e > rangeStartMillis && s < rangeEndMillis) {
                         val isService = fc.intervalKind == IntervalKind.SERVICE
                         candidates += CandidateInterval(
@@ -251,10 +298,9 @@ object ScheduleEngine {
                             matchesDay && afterStart && beforeEnd
                         }
                         if (matchingRules.isNotEmpty()) {
-                            val dayStart = cursor.atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
-                            val dayEnd = cursor.plusDays(1).atStartOfDay(HAVANA_ZONE).toInstant().toEpochMilli()
+                            val dayStart = cursor.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                            val dayEnd = cursor.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
                             if (dayEnd > rangeStartMillis && dayStart < rangeEndMillis) {
-                                // Default to outage on active days outside fixed service intervals unless overridden
                                 candidates += CandidateInterval(
                                     startMillis = maxOf(dayStart, rangeStartMillis),
                                     endMillis = minOf(dayEnd, rangeEndMillis),
@@ -267,7 +313,7 @@ object ScheduleEngine {
                                 )
                             }
                             matchingRules.forEach { rule ->
-                                val (s, e) = resolveDateMinuteSpan(cursor, rule.startMinuteOfDay, rule.endMinuteOfDay)
+                                val (s, e) = resolveDateMinuteSpan(cursor, rule.startMinuteOfDay, rule.endMinuteOfDay, zoneId)
                                 if (e > rangeStartMillis && s < rangeEndMillis) {
                                     candidates += CandidateInterval(
                                         startMillis = maxOf(s, rangeStartMillis),
@@ -297,7 +343,6 @@ object ScheduleEngine {
             }
 
             ScheduleType.CUSTOM, ScheduleType.NONE -> {
-                // Check synchronized relation if explicitly enabled
                 val syncRelation = snapshot.relations.firstOrNull {
                     it.sourceCircuitCode.equals(circuit.code, ignoreCase = true) && it.syncRuleEnabled
                 }
@@ -307,7 +352,8 @@ object ScheduleEngine {
                         snapshot = snapshot,
                         rangeStartMillis = rangeStartMillis,
                         rangeEndMillis = rangeEndMillis,
-                        visitedCircuits = nextVisited
+                        visitedCircuits = nextVisited,
+                        zoneId = zoneId
                     )
                     targetSegments.forEach { seg ->
                         val mappedState = mapRelationState(seg.state, syncRelation.relationType)
@@ -483,17 +529,14 @@ object ScheduleEngine {
         return mergeConsecutiveSegments(clipped)
     }
 
-    /**
-     * Resolves [startMinuteOfDay, endMinuteOfDay) anchored on [date] in America/Havana.
-     * Supports midnight crossing via endMinuteOfDay <= startMinuteOfDay or endMinuteOfDay > 1440.
-     */
     fun resolveDateMinuteSpan(
         date: LocalDate,
         startMinuteOfDay: Int,
-        endMinuteOfDay: Int
+        endMinuteOfDay: Int,
+        zoneId: ZoneId = HAVANA_ZONE
     ): Pair<Long, Long> {
         val clampedStart = startMinuteOfDay.coerceIn(0, MINUTES_PER_DAY - 1)
-        val startZdt = date.atTime(LocalTime.of(clampedStart / 60, clampedStart % 60)).atZone(HAVANA_ZONE)
+        val startZdt = date.atTime(LocalTime.of(clampedStart / 60, clampedStart % 60)).atZone(zoneId)
 
         val endZdt: ZonedDateTime = when {
             endMinuteOfDay > MINUTES_PER_DAY -> {
@@ -501,20 +544,19 @@ object ScheduleEngine {
                 val remMin = endMinuteOfDay % MINUTES_PER_DAY
                 date.plusDays(extraDays.toLong())
                     .atTime(LocalTime.of(remMin / 60, remMin % 60))
-                    .atZone(HAVANA_ZONE)
+                    .atZone(zoneId)
             }
             endMinuteOfDay == MINUTES_PER_DAY -> {
-                date.plusDays(1).atStartOfDay(HAVANA_ZONE)
+                date.plusDays(1).atStartOfDay(zoneId)
             }
             endMinuteOfDay <= clampedStart -> {
-                // Crosses midnight into next day
                 val safeEnd = endMinuteOfDay.coerceIn(0, MINUTES_PER_DAY - 1)
                 date.plusDays(1)
                     .atTime(LocalTime.of(safeEnd / 60, safeEnd % 60))
-                    .atZone(HAVANA_ZONE)
+                    .atZone(zoneId)
             }
             else -> {
-                date.atTime(LocalTime.of(endMinuteOfDay / 60, endMinuteOfDay % 60)).atZone(HAVANA_ZONE)
+                date.atTime(LocalTime.of(endMinuteOfDay / 60, endMinuteOfDay % 60)).atZone(zoneId)
             }
         }
         return startZdt.toInstant().toEpochMilli() to endZdt.toInstant().toEpochMilli()
@@ -530,27 +572,43 @@ object ScheduleEngine {
         DayOfWeek.SUNDAY -> 6
     }
 
-    // Formatting utilities in America/Havana
     private val time12Formatter = DateTimeFormatter.ofPattern("hh:mm a", Locale("es", "CU"))
     private val time24Formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
     private val dateFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, yyyy", Locale("es", "CU"))
     private val shortDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.US)
+    private val dateTime12Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", Locale("es", "CU"))
+    private val dateTime24Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.US)
 
-    fun formatTime12h(epochMillis: Long): String =
-        Instant.ofEpochMilli(epochMillis).atZone(HAVANA_ZONE).format(time12Formatter)
+    fun formatTime(epochMillis: Long, use24h: Boolean, zoneId: ZoneId = HAVANA_ZONE): String =
+        if (use24h) formatTime24h(epochMillis, zoneId) else formatTime12h(epochMillis, zoneId)
 
-    fun formatTime24h(epochMillis: Long): String =
-        Instant.ofEpochMilli(epochMillis).atZone(HAVANA_ZONE).format(time24Formatter)
+    fun formatTime12h(epochMillis: Long, zoneId: ZoneId = HAVANA_ZONE): String =
+        Instant.ofEpochMilli(epochMillis).atZone(zoneId).format(time12Formatter)
+
+    fun formatTime24h(epochMillis: Long, zoneId: ZoneId = HAVANA_ZONE): String =
+        Instant.ofEpochMilli(epochMillis).atZone(zoneId).format(time24Formatter)
+
+    fun formatDateTimeReadable(epochMillis: Long, use24h: Boolean, zoneId: ZoneId = HAVANA_ZONE): String =
+        Instant.ofEpochMilli(epochMillis).atZone(zoneId)
+            .format(if (use24h) dateTime24Formatter else dateTime12Formatter)
 
     fun formatDateEs(date: LocalDate): String =
         date.format(dateFormatter).replaceFirstChar { it.uppercase() }
 
     fun formatShortDate(date: LocalDate): String = date.format(shortDateFormatter)
 
+    fun formatMinuteOfDay(minuteOfDay: Int, use24h: Boolean): String =
+        if (use24h) formatMinuteOfDay24h(minuteOfDay) else formatMinuteOfDay12h(minuteOfDay)
+
     fun formatMinuteOfDay12h(minuteOfDay: Int): String {
         val norm = ((minuteOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
         val t = LocalTime.of(norm / 60, norm % 60)
         return t.format(time12Formatter)
+    }
+
+    fun formatMinuteOfDay24h(minuteOfDay: Int): String {
+        val norm = ((minuteOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+        return String.format(Locale.US, "%02d:%02d", norm / 60, norm % 60)
     }
 
     fun formatDurationHms(millis: Long): String {

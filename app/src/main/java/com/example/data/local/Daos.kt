@@ -157,3 +157,24 @@ interface ConfigBackupDao {
     @Query("DELETE FROM config_backups WHERE id NOT IN (SELECT id FROM config_backups ORDER BY createdAtMillis DESC LIMIT 10)")
     suspend fun pruneOldBackups()
 }
+
+@Dao
+interface RotationCycleDao {
+    @Query("SELECT * FROM rotation_cycles ORDER BY name ASC")
+    fun observeAll(): Flow<List<RotationCycleEntity>>
+
+    @Query("SELECT * FROM rotation_cycles ORDER BY name ASC")
+    suspend fun getAllOnce(): List<RotationCycleEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(cycle: RotationCycleEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(cycles: List<RotationCycleEntity>)
+
+    @Query("DELETE FROM rotation_cycles WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM rotation_cycles")
+    suspend fun deleteAll()
+}

@@ -120,13 +120,41 @@ data class CircuitRelation(
     val notes: String = ""
 )
 
+@Serializable
+data class RotationCycle(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val serviceDurationMinutes: Int = 240,
+    val outageDurationMinutes: Int = 720,
+    val referenceEpochMillis: Long,
+    val orderedGroupIds: List<String> = emptyList(),
+    val isActive: Boolean = true
+) {
+    val totalCycleMinutes: Int
+        get() = (serviceDurationMinutes + outageDurationMinutes).coerceAtLeast(1)
+
+    val maxGroupsSupported: Int
+        get() = (totalCycleMinutes / serviceDurationMinutes.coerceAtLeast(1)).coerceAtLeast(1)
+
+    val remainderMinutes: Int
+        get() = totalCycleMinutes % serviceDurationMinutes.coerceAtLeast(1)
+
+    val effectiveOutageMinutes: Int
+        get() = maxOf(
+            outageDurationMinutes,
+            ((orderedGroupIds.size - 1).coerceAtLeast(0)) * serviceDurationMinutes
+        )
+}
+
 data class ScheduleSnapshot(
     val circuits: List<Circuit>,
     val groups: List<ScheduleGroup>,
     val fixedRules: List<FixedScheduleRule>,
     val explicitForecasts: List<ExplicitForecast>,
     val manualExceptions: List<ManualException>,
-    val relations: List<CircuitRelation>
+    val relations: List<CircuitRelation>,
+    val cycles: List<RotationCycle> = emptyList()
 )
 
 data class TimelineSegment(
