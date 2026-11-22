@@ -39,7 +39,7 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
 
 ## Compatibilidad y requisitos
 
-- **Android mínimo**: Android 6.0 Marshmallow (**API 23**).
+- **Android mínimo**: Android 7.0 Nougat (**API 24**) en el paquete para Google Play (requerido por *Play automatic protection*; compatible con API 23 en compilaciones locales manuales sin Play Store).
 - **SDK objetivo / compilación**: API **36**.
 - **Arquitecturas soportadas**:
   - Universal (`universal`)
