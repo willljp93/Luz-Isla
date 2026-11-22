@@ -1,0 +1,34 @@
+# Android Studio & Gradle
+*.iml
+.gradle/
+.kotlin/
+/local.properties
+local.properties
+.cxx/
+.externalNativeBuild/
+/build/
+app/build/
+.build-outputs/
+.aistudio/
+captures/
+
+# IntelliJ / Android Studio IDE caches
+/.idea/caches/
+/.idea/libraries/
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.idea/*.xml
+!.idea/runConfigurations.xml
+
+# Secrets & Keystores
+.env
+*.keystore
+*.jks
+debug.keystore
+debug.keystore.base64
+
+# OS files
+.DS_Store
+Thumbs.db

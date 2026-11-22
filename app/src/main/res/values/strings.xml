@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Luz Isla</string>
+    <string name="app_full_title">Luz Isla – Horarios Eléctricos</string>
+    <string name="app_disclaimer">Herramienta comunitaria independiente. Muestra estados programados configurados, no mediciones en tiempo real ni información oficial de la Empresa Eléctrica.</string>
+    <string name="widget_primary_description">Muestra en vivo el estado programado de tu circuito favorito principal.</string>
+    <string name="widget_configurable_description">Permite elegir cualquier circuito del catálogo para consultarlo desde la pantalla de inicio.</string>
+    <string name="widget_loading">Cargando horario…</string>
+    <string name="widget_tap_to_configure">Toca para elegir un circuito</string>
+</resources>

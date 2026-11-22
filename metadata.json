@@ -1,0 +1,6 @@
+{
+  "name": "Luz Isla",
+  "description": "Horarios eléctricos programados, línea de tiempo de 24h, calendario, widgets y sincronización offline para los circuitos de la Isla de la Juventud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

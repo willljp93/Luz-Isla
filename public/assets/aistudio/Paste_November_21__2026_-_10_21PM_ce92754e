@@ -1,0 +1,940 @@
+# PROMPT MAESTRO: Desarrollo de aplicación Android «Luz Isla – Horarios Eléctricos»
+
+## 1. Rol y objetivo del proyecto
+
+Actúa como un equipo profesional de desarrollo de aplicaciones Android, integrado por:
+
+- Un arquitecto de software senior.
+- Un desarrollador Android especializado en Kotlin.
+- Un especialista en diseño UX/UI.
+- Un especialista en bases de datos y arquitectura offline-first.
+- Un ingeniero de pruebas y control de calidad.
+
+Necesito desarrollar una aplicación Android completa, moderna, ligera y funcional llamada provisionalmente **Luz Isla – Horarios Eléctricos**.
+
+La aplicación tendrá como finalidad mostrar de forma clara e intuitiva los horarios de disponibilidad del servicio eléctrico de los diferentes circuitos de distribución de la Isla de la Juventud, Cuba.
+
+No quiero una simple reproducción digital de las tablas de pronósticos eléctricos. Necesito transformar esa información en una experiencia visual que permita conocer rápidamente:
+
+- Qué circuitos tienen servicio eléctrico programado.
+- Qué circuitos están afectados.
+- A qué hora comienza y termina el próximo período de servicio.
+- Cuánto tiempo falta para el próximo cambio.
+- Cuál será el horario de los próximos días.
+- Cómo se distribuyen los diferentes circuitos y grupos de afectación.
+- Qué circuitos corresponden a mi vivienda, reparto o localidad.
+
+La aplicación debe ser fácil de utilizar, incluso para personas con pocos conocimientos tecnológicos.
+
+No debe presentarse como una aplicación oficial de la Empresa Eléctrica, salvo que exista autorización expresa.
+
+---
+
+## 2. Tecnologías y requisitos de compatibilidad
+
+Desarrollar una aplicación Android nativa utilizando:
+
+- Kotlin.
+- Jetpack Compose.
+- Material Design 3.
+- Arquitectura MVVM.
+- Clean Architecture cuando aporte valor real.
+- Kotlin Coroutines y StateFlow.
+- Room para almacenar datos locales.
+- DataStore para las preferencias.
+- Android WorkManager para sincronizaciones periódicas no exactas.
+- Android App Widgets para widgets de pantalla de inicio.
+
+Requisitos de compatibilidad:
+
+- Android mínimo: 6.0 Marshmallow (API 23).
+- ARM de 32 bits: armeabi-v7a.
+- ARM de 64 bits: arm64-v8a.
+- Seleccionar el SDK objetivo estable y apropiado al momento de compilar.
+- Compatible con teléfonos Android de prestaciones modestas.
+- No depender obligatoriamente de Google Play Services.
+- No requerir conexión permanente a Internet.
+- Utilizar dependencias estables y compatibles con API 23.
+- Evitar bibliotecas innecesarias y dependencias pesadas.
+
+Generar los siguientes paquetes:
+
+1. APK universal.
+2. APK para armeabi-v7a.
+3. APK para arm64-v8a.
+
+La aplicación debe poder distribuirse e instalarse manualmente mediante APK.
+
+---
+
+## 3. Administración completamente dinámica de circuitos
+
+Esta es una funcionalidad fundamental.
+
+La aplicación NO debe tener una cantidad fija de circuitos definida en el código fuente.
+
+Debe existir un catálogo completamente dinámico que permita al administrador agregar tantos circuitos como necesite, sin tener que modificar el código de la aplicación.
+
+El número de circuitos debe depender exclusivamente de los datos configurados.
+
+### Información de cada circuito
+
+Cada circuito debe tener los siguientes campos:
+
+- Código: identificador oficial, por ejemplo A210.
+- Nombre personalizado: nombre que el usuario quiera asignarle.
+- Comentario o descripción: información adicional sobre la ubicación, localidad, reparto o vivienda.
+- Grupo de programación: grupo eléctrico al que pertenece, cuando corresponda.
+- Tipo de programación: fijo, rotativo, personalizado o sin programación.
+- Estado: activo o inactivo.
+- Favorito: sí o no.
+- Orden de visualización.
+- Fecha de creación y última modificación.
+
+El código debe ser obligatorio y único dentro de la configuración.
+
+El nombre y el comentario deben ser opcionales.
+
+Permitir que cada usuario personalice los nombres y comentarios sin modificar el código original del circuito.
+
+### Ejemplo de configuración
+
+| Código | Nombre | Comentario |
+|---|---|---|
+| A210 | Camilo | Reparto Camilo Cienfuegos |
+| A060 | Mi casa | Circuito de mi vivienda |
+| A386 | Sierra Caballo | Zona del Polígono |
+| A177 | Chacón | Reparto Chacón |
+| A020 | Trabajo | Lugar de trabajo |
+
+Los datos son ejemplos.
+
+### Funciones del catálogo
+
+Implementar:
+
+- Agregar circuitos.
+- Editar circuitos.
+- Eliminar circuitos.
+- Desactivar circuitos temporalmente.
+- Cambiar su nombre.
+- Cambiar su comentario.
+- Cambiar su grupo.
+- Marcar y desmarcar favoritos.
+- Reordenar circuitos.
+- Buscar por código.
+- Buscar por nombre.
+- Buscar por comentario.
+- Filtrar por grupo.
+- Filtrar por favoritos.
+
+No establecer límites artificiales como 20, 50 o 100 circuitos.
+
+La arquitectura debe admitir un número variable de registros y utilizar listas eficientes, paginación cuando sea necesaria y búsquedas locales rápidas.
+
+Los circuitos desactivados no deben aparecer normalmente en la pantalla principal, pero deben permanecer disponibles para ser recuperados.
+
+### Interacción desde la pantalla principal
+
+Cuando el usuario toque la tarjeta de un circuito, abrir una ventana de detalle o una hoja inferior (Modal Bottom Sheet) utilizando Material 3.
+
+Mostrar de manera destacada:
+
+1. Código del circuito.
+2. Nombre personalizado.
+3. Comentario o descripción.
+4. Grupo de programación.
+5. Estado programado actual.
+6. Horario del período actual.
+7. Tiempo restante.
+8. Próximo período de servicio.
+9. Calendario individual.
+
+Ejemplo:
+
+El usuario toca A210.
+
+La aplicación muestra:
+
+**A210**
+
+**Camilo**
+
+Comentario: Reparto Camilo Cienfuegos.
+
+Estado: Con servicio programado.
+
+Inicio: 04:00 PM.
+
+Finalización: 08:00 PM.
+
+Próximo servicio: Según programación.
+
+Si el usuario no ha configurado nombre ni comentario, mostrar solamente el código.
+
+El nombre y comentario deben poder modificarse desde la pantalla de administración, no directamente desde la tarjeta principal.
+
+La información personalizada debe conservarse al importar actualizaciones de pronósticos, siempre que no se indique expresamente que se desea reemplazarla.
+
+---
+
+## 4. Tipos de programación eléctrica
+
+El motor de horarios debe permitir diferentes modalidades.
+
+### A. Circuitos con horario fijo
+
+Son circuitos que reciben servicio durante determinados horarios todos los días o algunos días de la semana.
+
+Ejemplos:
+
+- Circuito A: 10:00 AM – 06:00 PM.
+- Circuito B: 09:00 AM – 05:00 PM.
+- Circuito C: 08:00 AM – 05:00 PM.
+
+Permitir configurar individualmente:
+
+- Hora de inicio.
+- Hora de finalización.
+- Días de la semana.
+- Varios intervalos en un mismo día.
+- Fechas de inicio y finalización de la programación.
+- Excepciones para fechas específicas.
+
+### B. Circuitos con horario rotativo
+
+Esta es una de las funcionalidades más importantes.
+
+Algunos circuitos trabajan bajo ciclos de:
+
+- 4 horas con servicio.
+- 12 horas sin servicio.
+- Repetición continua.
+
+El ciclo completo dura 16 horas.
+
+Sin embargo, los grupos no comienzan sus ciclos simultáneamente.
+
+Cada grupo tiene una fecha y hora de referencia diferente, por lo que los períodos se alternan entre sí.
+
+Ejemplo ilustrativo:
+
+| Grupo | Horario con servicio | Horas sin servicio |
+|---|---|---|
+| Grupo 1 | 00:00 – 04:00 | 12 horas |
+| Grupo 2 | 04:00 – 08:00 | 12 horas |
+| Grupo 3 | 08:00 – 12:00 | 12 horas |
+
+Este ejemplo no representa una programación real. Todos los valores deben poder configurarse.
+
+El administrador debe poder:
+
+- Crear cualquier cantidad de grupos.
+- Asignar cualquier cantidad de circuitos a cada grupo.
+- Establecer la duración del período con servicio.
+- Establecer la duración del período sin servicio.
+- Configurar fecha y hora de referencia de cada grupo.
+- Modificar la fase o desplazamiento horario.
+- Cambiar la duración de los ciclos.
+- Consultar automáticamente los próximos períodos.
+
+No asumir que todos los grupos tienen necesariamente ciclos de 4 y 12 horas.
+
+El sistema debe admitir otros ciclos, por ejemplo:
+
+- 3 horas con servicio y 9 sin servicio.
+- 4 horas con servicio y 12 sin servicio.
+- 6 horas con servicio y 18 sin servicio.
+
+Los intervalos deben calcularse mediante la fecha y hora de referencia correspondiente, no solamente comparando la hora del día.
+
+Es indispensable manejar correctamente los períodos que atraviesan la medianoche.
+
+### C. Pronósticos específicos por fecha
+
+Además de los horarios automáticos, debe existir una modalidad para introducir pronósticos publicados para fechas concretas.
+
+Cada registro tendrá:
+
+- Fecha.
+- Hora de inicio.
+- Hora de finalización.
+- Uno o varios circuitos afectados.
+- Tipo de intervalo.
+- Observaciones.
+
+Permitir varios intervalos por circuito y día.
+
+Los pronósticos explícitos deben prevalecer sobre la programación recurrente durante el período que cubran.
+
+### D. Circuitos relacionados
+
+Permitir establecer relaciones entre circuitos.
+
+Ejemplo:
+
+El circuito A080 se afecta cuando el A060 tiene servicio.
+
+Configurar el tipo de relación:
+
+- Informativa.
+- Mismo horario.
+- Horario inverso.
+- Dependiente.
+- Otra relación personalizada.
+
+La relación no debe modificar automáticamente los horarios, salvo que el administrador haya seleccionado expresamente una regla de sincronización.
+
+---
+
+## 5. Motor de cálculo de horarios
+
+Crear un motor de programación independiente de la interfaz gráfica.
+
+Debe ser reutilizable, eficiente y estar cubierto por pruebas unitarias.
+
+Utilizar la zona horaria America/Havana.
+
+El motor debe ser capaz de determinar para cualquier fecha y hora:
+
+- Estado programado de cada circuito.
+- Inicio del período actual.
+- Finalización del período actual.
+- Inicio del siguiente período con servicio.
+- Finalización del siguiente período con servicio.
+- Tiempo restante.
+- Próximos intervalos de las siguientes 24 horas.
+- Próximos intervalos de los siguientes siete días.
+
+Resolver correctamente:
+
+- Cambios de día.
+- Intervalos que atraviesan medianoche.
+- Cambios de mes y año.
+- Diferentes ciclos.
+- Desplazamientos entre grupos.
+- Horarios especiales.
+- Excepciones manuales.
+- Fechas sin pronóstico.
+- Conflictos entre programaciones.
+
+Establecer la siguiente prioridad de programación:
+
+1. Excepciones manuales específicas.
+2. Pronósticos explícitos para fechas determinadas.
+3. Horarios recurrentes fijos o rotativos.
+4. Sin información disponible.
+
+Los intervalos deben manejarse con inicio incluido y final excluido.
+
+Nunca afirmar que existe corriente eléctrica físicamente porque el horario indique servicio. Mostrar que se trata del estado programado, no de una medición en tiempo real de la red.
+
+---
+
+## 6. Pantalla principal
+
+Debe ser la pantalla más importante y ofrecer una visión general del servicio eléctrico.
+
+Mostrar:
+
+- Fecha actual.
+- Hora local.
+- Última actualización del pronóstico.
+- Circuitos favoritos.
+- Estado de los circuitos.
+- Próximo cambio de servicio.
+- Contador regresivo.
+
+Las tarjetas deben mostrar:
+
+- Código.
+- Nombre personalizado, cuando exista.
+- Estado programado.
+- Hora de inicio y finalización del período.
+- Tiempo restante.
+- Próximo período de servicio.
+- Indicador de favorito.
+
+Los favoritos deben mostrarse primero y tener un mayor protagonismo visual.
+
+### Filtros
+
+Incluir:
+
+- Todos.
+- Mis favoritos.
+- Con servicio programado.
+- Sin servicio programado.
+- Sin información.
+
+Permitir cambiar entre presentación en tarjetas y lista compacta.
+
+Añadir búsqueda rápida para encontrar un circuito por su código, nombre o comentario.
+
+### Identificación visual
+
+Utilizar:
+
+- Verde para servicio programado.
+- Rojo o una tonalidad diferenciada para interrupción programada.
+- Gris para horarios desconocidos.
+
+No depender únicamente de los colores: utilizar texto e iconos.
+
+---
+
+## 7. Línea de tiempo visual de 24 horas
+
+Esta funcionalidad es prioritaria.
+
+Crear una representación visual de las 24 horas del día para cada circuito.
+
+En lugar de utilizar tablas tradicionales, mostrar una barra horizontal dividida en segmentos.
+
+Ejemplo ilustrativo:
+
+A210:
+
+00:00 ━━━ Sin servicio ━━━ 08:00
+
+08:00 ━━━ Con servicio ━━━ 12:00
+
+12:00 ━━━ Sin servicio ━━━ 00:00
+
+La representación debe utilizar colores, etiquetas y horas de inicio y finalización.
+
+Permitir navegar entre días.
+
+Crear dos modalidades:
+
+**Línea de tiempo individual**
+
+Mostrar todos los períodos de un solo circuito.
+
+**Línea de tiempo comparativa**
+
+Mostrar varios circuitos o grupos en filas independientes, permitiendo identificar visualmente cómo se alternan sus horarios.
+
+Debe poder filtrarse para mostrar exclusivamente los favoritos.
+
+Al seleccionar un segmento, mostrar sus detalles.
+
+La escala temporal debe ser proporcional y permitir consultar períodos que atraviesan la medianoche.
+
+---
+
+## 8. Calendario
+
+Crear una sección dedicada a consultar los horarios de diferentes fechas.
+
+Incluir:
+
+- Vista diaria.
+- Vista semanal.
+- Vista por circuito.
+- Vista general de los grupos.
+
+Permitir seleccionar una fecha y consultar el pronóstico correspondiente.
+
+Mostrar los próximos siete días y permitir navegar a otras fechas disponibles.
+
+Cuando no exista pronóstico para una fecha, mostrar claramente esa situación y no inventar horarios.
+
+---
+
+## 9. Sistema de favoritos
+
+Permitir marcar cualquier circuito como favorito.
+
+Cada teléfono puede tener sus propios favoritos.
+
+Los favoritos deben:
+
+- Aparecer primero.
+- Destacar visualmente.
+- Poder filtrarse de forma independiente.
+- Mantenerse después de cerrar la aplicación.
+- No verse afectados al importar una configuración compartida, salvo selección expresa del usuario.
+
+La aplicación debe permitir destacar especialmente el circuito propio del usuario.
+
+---
+
+## 10. Widget de Android para la pantalla de inicio
+
+Crear widgets que permitan consultar el estado de los circuitos sin abrir la aplicación.
+
+Como mínimo, desarrollar un widget compacto para el circuito favorito principal.
+
+Ejemplo de información:
+
+A210 – Camilo
+
+CON SERVICIO
+
+Próxima interrupción: 08:00 PM
+
+Faltan 02:15:30
+
+También implementar una variante que permita seleccionar el circuito que se quiere consultar.
+
+Características:
+
+- Actualizar el estado cuando corresponda.
+- Mostrar la información del circuito seleccionado.
+- Indicar la hora del próximo cambio.
+- Permitir abrir directamente el detalle del circuito al tocar el widget.
+- Mantener el último estado calculado cuando no exista conexión.
+- Adaptarse a los tamaños disponibles en la pantalla de inicio.
+
+Utilizar Android AppWidget o Jetpack Glance si la compatibilidad con API 23 está garantizada. En caso contrario, utilizar la API clásica de widgets para garantizar compatibilidad.
+
+Documentar las limitaciones de actualización de widgets impuestas por Android.
+
+---
+
+## 11. Detalle informativo al tocar un circuito
+
+Al tocar una tarjeta desde la pantalla principal, abrir una ficha informativa elegante.
+
+Mostrar:
+
+- Código oficial.
+- Nombre personalizado.
+- Comentario del circuito.
+- Grupo al que pertenece.
+- Estado programado.
+- Intervalo actual.
+- Tiempo restante.
+- Próximos horarios.
+- Línea de tiempo del día.
+
+El comentario personalizado puede utilizarse para identificar el reparto, barrio, localidad, calle o vivienda.
+
+Ejemplo:
+
+Código: A210
+
+Nombre: Camilo
+
+Comentario: Reparto Camilo Cienfuegos.
+
+Permitir mostrar el nombre y el comentario de forma independiente.
+
+No utilizar el comentario para alterar los cálculos de horarios: es información descriptiva.
+
+---
+
+## 12. Configuración y administración
+
+Crear una sección de administración completa.
+
+Permitir:
+
+- Crear, modificar y eliminar circuitos.
+- Crear grupos de programación.
+- Asignar circuitos.
+- Modificar ciclos.
+- Configurar horarios fijos.
+- Configurar excepciones.
+- Crear pronósticos para fechas específicas.
+- Administrar relaciones entre circuitos.
+- Modificar nombres y comentarios.
+- Configurar favoritos y visualización.
+- Establecer la URL de sincronización.
+- Configurar notificaciones.
+
+La aplicación debe funcionar totalmente sin conexión.
+
+---
+
+## 13. Exportación e importación mediante código alfanumérico
+
+Esta funcionalidad es fundamental.
+
+Necesito poder configurar una aplicación y transferir su configuración a otros teléfonos mediante WhatsApp, Telegram u otros medios.
+
+El código debe contener los datos reales de configuración, no solamente un identificador de servidor.
+
+Ejemplo ilustrativo:
+
+59DJS849TN392K7M2P8X...
+
+Implementar:
+
+1. Serialización a JSON.
+2. Compresión de los datos.
+3. Codificación Base32 Crockford o formato alfanumérico equivalente.
+4. Identificador de versión.
+5. Validación de integridad mediante SHA-256 o mecanismo equivalente.
+
+Permitir exportar e importar:
+
+- Catálogo de circuitos.
+- Nombres.
+- Comentarios.
+- Grupos.
+- Horarios fijos.
+- Ciclos rotativos.
+- Fechas de referencia.
+- Excepciones.
+- Relaciones.
+- Pronósticos.
+- Metadatos.
+
+Los favoritos y preferencias personales deben tratarse por separado.
+
+### Exportación
+
+- Generar código.
+- Copiar.
+- Compartir.
+- Generar QR.
+- Guardar archivo JSON.
+
+### Importación
+
+- Pegar código.
+- Escanear QR.
+- Seleccionar archivo.
+- Validar integridad.
+- Mostrar resumen.
+- Combinar o reemplazar datos.
+- Conservar información personal cuando corresponda.
+
+No sobrescribir información existente sin autorización.
+
+Si el código es incorrecto, está incompleto o corresponde a una versión incompatible, informar del error sin alterar los datos locales.
+
+Para configuraciones grandes, permitir compartir archivos en lugar de utilizar códigos excesivamente largos.
+
+---
+
+## 14. Código QR
+
+Generar un código QR que contenga la configuración exportada cuando su tamaño sea razonable.
+
+El proceso debe permitir:
+
+1. Abrir la sección de exportación.
+2. Generar el QR.
+3. Mostrarlo en pantalla.
+4. Escanearlo desde otro teléfono.
+5. Validar los datos.
+6. Importar la configuración.
+
+Cuando la configuración sea demasiado grande para un único QR, ofrecer automáticamente una de estas alternativas:
+
+- QR dividido en varias partes numeradas.
+- Código alfanumérico.
+- Archivo JSON compartido.
+
+No truncar nunca una configuración para hacerla caber en un QR.
+
+El escáner debe permitir cancelar y volver a intentarlo.
+
+---
+
+## 15. Sincronización automática mediante URL
+
+Permitir descargar nuevos pronósticos desde una dirección HTTPS.
+
+Ejemplo:
+
+https://midominio.com/horarios/configuracion.json
+
+La URL debe poder configurarse desde los ajustes.
+
+Implementar:
+
+- Descarga manual.
+- Consulta de versiones.
+- Detección de actualizaciones.
+- Sincronización automática opcional.
+- Fecha de última actualización.
+- Notificaciones de nuevos pronósticos.
+- Validación del JSON.
+- Validación de integridad.
+- Conservación de los últimos datos válidos cuando falle la conexión.
+
+Diferenciar claramente los datos de programación compartidos de los datos personales del dispositivo.
+
+Una actualización de pronóstico no debe borrar nombres personalizados, comentarios ni favoritos.
+
+No es necesario desarrollar un backend durante la primera versión.
+
+La aplicación debe poder funcionar con un archivo JSON publicado en cualquier servidor HTTPS compatible.
+
+---
+
+## 16. Notificaciones locales
+
+Permitir configurar avisos para:
+
+- Inicio del servicio.
+- Finalización del servicio.
+- Próximo restablecimiento.
+- Nuevo pronóstico disponible.
+
+Configurar anticipaciones de:
+
+- 5 minutos.
+- 10 minutos.
+- 15 minutos.
+- 30 minutos.
+
+Permitir notificaciones únicamente para los favoritos.
+
+Respetar los permisos de cada versión de Android y las restricciones de ejecución en segundo plano.
+
+Reprogramar las notificaciones cuando cambie el pronóstico, la zona horaria o se reinicie el teléfono, según las posibilidades del sistema operativo.
+
+No depender de Google Play Services.
+
+---
+
+## 17. Compartir información
+
+Permitir compartir:
+
+- Un circuito individual.
+- Todos los circuitos de hoy.
+- Los favoritos.
+- Los próximos horarios.
+- El resumen de los circuitos con servicio.
+
+Generar mensajes de texto legibles y preparados para WhatsApp y Telegram.
+
+Permitir también generar imágenes de resumen con la información de los circuitos.
+
+---
+
+## 18. Diseño y experiencia de usuario
+
+Utilizar Jetpack Compose y Material Design 3.
+
+El diseño debe ser moderno, elegante, intuitivo y ligero.
+
+Implementar:
+
+- Modo claro.
+- Modo oscuro.
+- Modo automático según Android.
+- Tarjetas con esquinas redondeadas.
+- Iconografía moderna.
+- Tipografía legible.
+- Animaciones discretas.
+- Transiciones suaves.
+- Interfaces adaptables a diferentes tamaños.
+- Buen contraste.
+- Accesibilidad.
+
+### Navegación principal
+
+Crear una barra de navegación inferior con:
+
+1. Inicio.
+2. Calendario.
+3. Circuitos.
+4. Ajustes.
+
+La pantalla de inicio debe priorizar los favoritos.
+
+No recargar visualmente la interfaz.
+
+Evitar tablas tradicionales como representación principal del pronóstico.
+
+---
+
+## 19. Seguridad y confiabilidad de los datos
+
+- Validar los datos importados.
+- No ejecutar contenido recibido como código.
+- Validar las URL de sincronización.
+- Utilizar HTTPS.
+- Mantener copias de seguridad antes de reemplazar configuraciones.
+- Evitar pérdida de información ante importaciones fallidas.
+- Proteger la integridad de los archivos.
+- Versionar el formato de configuración.
+- Gestionar migraciones de base de datos.
+- Evitar duplicados de circuitos.
+
+El código exportado debe poder compartirse sin transmitir información privada del dispositivo, como identificadores personales o preferencias no seleccionadas.
+
+---
+
+## 20. Datos de demostración
+
+Utilizar los circuitos de la imagen de referencia como datos iniciales de prueba:
+
+- A386: Sierra Caballo, Polígono.
+- A070.
+- A133.
+- A090.
+- A220.
+- A177: Chacón.
+- A888: anteriormente A147.
+- A210.
+- A050.
+- A010.
+- A310.
+- A330.
+- A340.
+- A060.
+- A040.
+- A080.
+- A030.
+- A230.
+- A020.
+
+Horarios fijos indicados:
+
+- A030 y A230: diariamente de 09:00 a 17:00.
+- A020: diariamente de 08:00 a 17:00.
+
+Permitir agregar otros circuitos fijos, por ejemplo, con horario de 10:00 a 18:00.
+
+El circuito A080 debe tener la relación informativa indicada con A060.
+
+Utilizar los pronósticos del 19 y 20 de noviembre de 2026 de la imagen proporcionada como datos de prueba para validar la introducción manual de horarios.
+
+Estos datos son históricos y no deben presentarse como una programación vigente.
+
+No deducir ciclos rotativos permanentes únicamente de estas dos fechas.
+
+---
+
+## 21. Arquitectura y organización del proyecto
+
+Mantener separados:
+
+- Interfaz de usuario.
+- Lógica de negocio.
+- Motor de programación.
+- Almacenamiento.
+- Sincronización.
+- Importación y exportación.
+- Notificaciones.
+- Widgets.
+- Modelos de datos.
+
+Evitar colocar los cálculos de horarios directamente en las pantallas Compose.
+
+Implementar repositorios y casos de uso donde corresponda.
+
+La lógica de cálculo debe poder probarse independientemente de Android.
+
+---
+
+## 22. Pruebas y validación
+
+Crear pruebas unitarias para comprobar:
+
+- Ciclos de 4 horas con servicio y 12 sin servicio.
+- Ciclos con diferentes duraciones.
+- Grupos con distintas horas de referencia.
+- Cruces de medianoche.
+- Cambios de día.
+- Programaciones fijas.
+- Excepciones de fechas.
+- Prioridades entre programaciones.
+- Circuitos sin información.
+- Intervalos consecutivos.
+- Tiempo restante.
+- Próximo período de servicio.
+
+Probar también:
+
+- Creación de muchos circuitos.
+- Modificación de nombres.
+- Modificación de comentarios.
+- Búsqueda.
+- Favoritos.
+- Exportación.
+- Importación.
+- Códigos dañados.
+- QR.
+- Configuraciones grandes.
+- Sincronización sin Internet.
+- Conservación de datos personales durante actualizaciones.
+- Widgets.
+- Notificaciones.
+
+---
+
+## 23. Entregables obligatorios
+
+Entregar un proyecto Android Studio completo y funcional.
+
+No entregar solamente maquetas, capturas, diseños Figma o fragmentos de código.
+
+Los entregables deben incluir:
+
+1. Proyecto Android Studio.
+2. Código fuente organizado.
+3. Base de datos Room.
+4. Motor de programación.
+5. Interfaz gráfica.
+6. Catálogo dinámico de circuitos.
+7. Sistema de favoritos.
+8. Sistema de comentarios personalizados.
+9. Calendario y líneas de tiempo.
+10. Widget Android.
+11. Sistema de notificaciones.
+12. Exportación e importación.
+13. Generación y lectura de QR.
+14. Sincronización mediante URL.
+15. Pruebas unitarias.
+16. Documentación del formato JSON.
+17. Documentación del formato de código.
+18. Instrucciones para compilar.
+19. APK universal.
+20. APK ARMv7.
+21. APK ARM64.
+
+Compilar realmente el proyecto y corregir todos los errores antes de considerarlo finalizado.
+
+No afirmar que se ha generado un APK si no se ha ejecutado y verificado la compilación.
+
+---
+
+## 24. Forma de trabajo
+
+Desarrollar el proyecto por etapas, pero con una arquitectura preparada desde el principio para incorporar todas las funcionalidades.
+
+Orden recomendado:
+
+**Primera etapa:**
+- Arquitectura.
+- Base de datos.
+- Catálogo dinámico de circuitos.
+- Grupos.
+- Motor de cálculo.
+- Horarios fijos y rotativos.
+
+**Segunda etapa:**
+- Pantalla principal.
+- Favoritos.
+- Comentarios personalizados.
+- Detalles de circuitos.
+- Calendario.
+- Línea de tiempo.
+
+**Tercera etapa:**
+- Importación y exportación.
+- QR.
+- Compartir pronósticos.
+- Sincronización mediante URL.
+
+**Cuarta etapa:**
+- Widgets.
+- Notificaciones.
+- Optimización.
+- Pruebas de compatibilidad.
+- Compilación de APK.
+
+No omitir funcionalidades importantes simplemente para terminar más rápido.
+
+Cuando una función no pueda implementarse de forma compatible con Android 6, explicar la limitación y ofrecer una solución alternativa.
+
+El resultado debe ser una aplicación ligera, intuitiva, confiable, completamente configurable, preparada para distribuirse entre los habitantes de la Isla de la Juventud y que pueda continuar evolucionando en futuras versiones.

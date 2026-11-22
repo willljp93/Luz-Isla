@@ -1,0 +1,673 @@
+package com.example.ui.screens.home
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PowerOff
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.domain.engine.ScheduleEngine
+import com.example.domain.model.CircuitStatusEvaluation
+import com.example.domain.model.ScheduledState
+import com.example.ui.components.CircuitDetailBottomSheet
+import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalElectricStatusColors
+import java.time.Instant
+
+@Composable
+fun HomeScreen(
+    viewModel: HomeViewModel,
+    onOpenInCalendar: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val statusColors = LocalElectricStatusColors.current
+    val nowZdt = remember(state.nowMillis) {
+        Instant.ofEpochMilli(state.nowMillis).atZone(ScheduleEngine.HAVANA_ZONE)
+    }
+    var shareMenuExpanded by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 840.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Hero Clock & Overview Card
+            item(key = "hero_banner") {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    shadowElevation = 2.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.secondary
+                                    )
+                                )
+                            )
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Luz Isla – Horarios",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Text(
+                                    text = ScheduleEngine.formatDateEs(nowZdt.toLocalDate()),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = ScheduleEngine.formatTime12h(state.nowMillis),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Box {
+                                    IconButton(
+                                        onClick = { shareMenuExpanded = true },
+                                        modifier = Modifier.testTag("home_share_menu_button")
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Share,
+                                            contentDescription = "Compartir resumen",
+                                            tint = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = shareMenuExpanded,
+                                        onDismissRequest = { shareMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Compartir todos hoy (texto)") },
+                                            onClick = {
+                                                shareMenuExpanded = false
+                                                viewModel.shareSummaryText("ALL")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Compartir favoritos (texto)") },
+                                            onClick = {
+                                                shareMenuExpanded = false
+                                                viewModel.shareSummaryText("FAVORITES")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Compartir con servicio (texto)") },
+                                            onClick = {
+                                                shareMenuExpanded = false
+                                                viewModel.shareSummaryText("WITH_SERVICE")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Compartir próximos horarios") },
+                                            onClick = {
+                                                shareMenuExpanded = false
+                                                viewModel.shareSummaryText("UPCOMING")
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
+                                            text = { Text("Generar imagen resumen") },
+                                            onClick = {
+                                                shareMenuExpanded = false
+                                                viewModel.shareSummaryImage()
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SummaryCountPill(
+                                label = "Con servicio",
+                                count = state.totalServiceCount,
+                                modifier = Modifier.weight(1f)
+                            )
+                            SummaryCountPill(
+                                label = "Sin servicio",
+                                count = state.totalOutageCount,
+                                modifier = Modifier.weight(1f)
+                            )
+                            SummaryCountPill(
+                                label = "Sin info",
+                                count = state.totalUnknownCount,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        val lastUpd = if (state.lastUpdateMillis > 0L) {
+                            "Última actualización: ${ScheduleEngine.formatTime12h(state.lastUpdateMillis)}"
+                        } else {
+                            "Modo sin conexión • Catálogo local editable"
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "$lastUpd • Estado programado (no oficial)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Search bar + Compact toggle
+            item(key = "search_row") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = state.searchQuery,
+                        onValueChange = viewModel::updateSearch,
+                        placeholder = { Text("Buscar código, nombre o reparto…") },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (state.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.updateSearch("") }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Limpiar búsqueda")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("home_search_input")
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        IconButton(
+                            onClick = viewModel::toggleCompactMode,
+                            modifier = Modifier.testTag("home_compact_toggle")
+                        ) {
+                            Icon(
+                                imageVector = if (state.compactMode) Icons.Filled.ViewAgenda else Icons.Filled.ViewList,
+                                contentDescription = if (state.compactMode) "Vista en tarjetas" else "Vista compacta"
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Filter Chips
+            item(key = "filter_chips") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = state.selectedFilter == filter,
+                            onClick = { viewModel.selectFilter(filter) },
+                            label = { Text(filter.label) },
+                            modifier = Modifier.testTag("home_filter_${filter.name.lowercase()}")
+                        )
+                    }
+                }
+            }
+
+            if (state.evaluations.isEmpty()) {
+                item(key = "empty_state") {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(28.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.HelpOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "No hay circuitos para mostrar",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "Ajusta los filtros o agrega circuitos en la pestaña Circuitos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(state.evaluations, key = { it.circuit.code }) { eval ->
+                    if (state.compactMode) {
+                        CompactCircuitRow(
+                            eval = eval,
+                            onClick = { viewModel.openCircuitDetail(eval.circuit.code) },
+                            onToggleFavorite = { viewModel.toggleFavorite(eval.circuit.code) }
+                        )
+                    } else {
+                        RichCircuitCard(
+                            eval = eval,
+                            onClick = { viewModel.openCircuitDetail(eval.circuit.code) },
+                            onToggleFavorite = { viewModel.toggleFavorite(eval.circuit.code) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    state.selectedEvaluation?.let { detailEval ->
+        CircuitDetailBottomSheet(
+            evaluation = detailEval,
+            snapshot = state.snapshot,
+            nowMillis = state.nowMillis,
+            onDismiss = viewModel::closeCircuitDetail,
+            onToggleFavorite = viewModel::toggleFavorite,
+            onSetPrimaryHome = viewModel::setPrimaryHome,
+            onShareText = viewModel::shareSingleCircuit,
+            onOpenInCalendar = { code ->
+                viewModel.closeCircuitDetail()
+                onOpenInCalendar(code)
+            }
+        )
+    }
+}
+
+@Composable
+private fun SummaryCountPill(
+    label: String,
+    count: Int,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White.copy(alpha = 0.16f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp)
+        ) {
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = JetBrainsMonoFontFamily,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.92f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun RichCircuitCard(
+    eval: CircuitStatusEvaluation,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    val statusColors = LocalElectricStatusColors.current
+    val circuit = eval.circuit
+    val isHighlighted = circuit.isPrimaryHome || circuit.isFavorite
+
+    val (accent, container, icon, stateText) = when (eval.state) {
+        ScheduledState.SERVICE_SCHEDULED -> CardVisual(
+            statusColors.service,
+            statusColors.serviceContainer,
+            Icons.Filled.Bolt,
+            "Con servicio programado"
+        )
+        ScheduledState.OUTAGE_SCHEDULED -> CardVisual(
+            statusColors.outage,
+            statusColors.outageContainer,
+            Icons.Filled.PowerOff,
+            "Sin servicio programado"
+        )
+        ScheduledState.UNKNOWN -> CardVisual(
+            statusColors.unknown,
+            statusColors.unknownContainer,
+            Icons.Filled.HelpOutline,
+            "Sin información"
+        )
+    }
+
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (circuit.isPrimaryHome) {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        border = when {
+            circuit.isPrimaryHome -> BorderStroke(2.dp, statusColors.favorite)
+            circuit.isFavorite -> BorderStroke(1.2.dp, accent.copy(alpha = 0.45f))
+            else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isHighlighted) 3.dp else 1.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("circuit_card_${circuit.code}")
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(container)
+                ) {
+                    Icon(icon, contentDescription = stateText, tint = accent)
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = circuit.code,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (circuit.customName.isNotBlank()) {
+                            Text(
+                                text = " • ${circuit.customName}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    if (circuit.comment.isNotBlank()) {
+                        Text(
+                            text = circuit.comment,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (circuit.isPrimaryHome) {
+                    Surface(
+                        color = statusColors.favoriteContainer,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Home,
+                            contentDescription = "Mi vivienda",
+                            tint = statusColors.favorite,
+                            modifier = Modifier.padding(6.dp).size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.testTag("fav_btn_${circuit.code}")
+                ) {
+                    Icon(
+                        imageVector = if (circuit.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                        contentDescription = if (circuit.isFavorite) "Quitar favorito" else "Agregar favorito",
+                        tint = if (circuit.isFavorite) statusColors.favorite else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = container,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = stateText,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = accent,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+
+                if (eval.remainingMillis != null && eval.state != ScheduledState.UNKNOWN) {
+                    Text(
+                        text = "Faltan ${ScheduleEngine.formatDurationHms(eval.remainingMillis)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        color = accent,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val periodStr = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
+                    "Período: ${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)} – ${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                } else {
+                    "Período: Sin datos"
+                }
+                Text(
+                    text = periodStr,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                val nextStr = if (eval.nextServiceStartMillis != null) {
+                    "Próx. servicio: ${ScheduleEngine.formatTime12h(eval.nextServiceStartMillis)}"
+                } else {
+                    "Próx: --"
+                }
+                Text(
+                    text = nextStr,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactCircuitRow(
+    eval: CircuitStatusEvaluation,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    val statusColors = LocalElectricStatusColors.current
+    val circuit = eval.circuit
+    val accent = when (eval.state) {
+        ScheduledState.SERVICE_SCHEDULED -> statusColors.service
+        ScheduledState.OUTAGE_SCHEDULED -> statusColors.outage
+        ScheduledState.UNKNOWN -> statusColors.unknown
+    }
+    val statusShort = when (eval.state) {
+        ScheduledState.SERVICE_SCHEDULED -> "Con servicio"
+        ScheduledState.OUTAGE_SCHEDULED -> "Sin servicio"
+        ScheduledState.UNKNOWN -> "Sin info"
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("circuit_compact_${circuit.code}")
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = circuit.displayTitle(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val sub = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
+                    "$statusShort • ${ScheduleEngine.formatTime12h(eval.currentIntervalStartMillis)}–${ScheduleEngine.formatTime12h(eval.currentIntervalEndMillis)}"
+                } else {
+                    statusShort
+                }
+                Text(
+                    text = sub,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = accent
+                )
+            }
+            if (eval.remainingMillis != null && eval.state != ScheduledState.UNKNOWN) {
+                Text(
+                    text = ScheduleEngine.formatDurationHms(eval.remainingMillis),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = JetBrainsMonoFontFamily,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (circuit.isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                    contentDescription = "Favorito",
+                    tint = if (circuit.isFavorite) statusColors.favorite else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private data class CardVisual(
+    val accent: Color,
+    val container: Color,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String
+)
