@@ -202,7 +202,7 @@ Por restricciones propias del sistema operativo Android (desde API 23 en adelant
 
 - JDK 17
 - Android SDK (compileSdk 36, build-tools compatibles)
-- Gradle instalado o `./gradlew`
+- Gradle 9.3.1 instalado (en GitHub Actions se descarga automáticamente; en local puedes ejecutar `gradle` directamente o generar el wrapper con `gradle wrapper`)
 
 ### Comandos para compilar
 

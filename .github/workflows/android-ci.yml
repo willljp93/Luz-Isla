@@ -22,12 +22,34 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Accept Android SDK Licenses
+        run: |
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          fi
+
+      - name: Ensure Debug Keystore for CI
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Run Unit & Robolectric Tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: gradle :app:testDebugUnitTest
 
       - name: Assemble Debug APKs (Universal, armeabi-v7a, arm64-v8a)
-        run: ./gradlew :app:assembleDebug -PenableAbiSplits=true
+        run: gradle :app:assembleDebug -PenableAbiSplits=true
 
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
