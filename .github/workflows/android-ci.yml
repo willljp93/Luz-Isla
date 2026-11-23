@@ -1,10 +1,15 @@
-name: Android CI – Luz Isla
+name: Android CI & Release – Luz Isla
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-and-test:
@@ -31,6 +36,25 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           fi
 
+      - name: Extract App Version from Gradle
+        id: app_version
+        run: |
+          VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+          VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)
+          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
+            echo "Could not extract versionName or versionCode from app/build.gradle.kts"
+            exit 1
+          fi
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            RELEASE_TAG="${{ github.ref_name }}"
+          else
+            RELEASE_TAG="v${VERSION_NAME}-b${VERSION_CODE}"
+          fi
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Detected versionName=${VERSION_NAME}, versionCode=${VERSION_CODE}, release_tag=${RELEASE_TAG}"
+
       - name: Ensure Debug Keystore for CI
         run: |
           if [ ! -f debug.keystore ]; then
@@ -48,11 +72,71 @@ jobs:
       - name: Run Unit & Robolectric Tests
         run: gradle :app:testDebugUnitTest
 
-      - name: Assemble Debug APKs (Universal, armeabi-v7a, arm64-v8a)
-        run: gradle :app:assembleDebug -PenableAbiSplits=true
+      - name: Assemble APKs (Release if signing secrets exist, otherwise Debug)
+        id: build_apk
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+            export KEYSTORE_PATH="$PWD/my-upload-key.jks"
+            gradle :app:assembleRelease -PenableAbiSplits=true
+            echo "build_variant=release" >> "$GITHUB_OUTPUT"
+            echo "apk_dir=app/build/outputs/apk/release" >> "$GITHUB_OUTPUT"
+          else
+            gradle :app:assembleDebug -PenableAbiSplits=true
+            echo "build_variant=debug" >> "$GITHUB_OUTPUT"
+            echo "apk_dir=app/build/outputs/apk/debug" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stage Versioned Release APKs
+        id: stage_apks
+        run: |
+          mkdir -p release-apks
+          VNAME="${{ steps.app_version.outputs.version_name }}"
+          VCODE="${{ steps.app_version.outputs.version_code }}"
+          VARIANT="${{ steps.build_apk.outputs.build_variant }}"
+          APK_DIR="${{ steps.build_apk.outputs.apk_dir }}"
+
+          for apk in "$APK_DIR"/*.apk; do
+            base=$(basename "$apk")
+            if echo "$base" | grep -q "universal"; then
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-universal.apk"
+            elif echo "$base" | grep -q "arm64-v8a"; then
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-arm64-v8a.apk"
+            elif echo "$base" | grep -q "armeabi-v7a"; then
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-armeabi-v7a.apk"
+            else
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-${base}"
+            fi
+          done
+
+          (cd release-apks && sha256sum *.apk > "LuzIsla-v${VNAME}-b${VCODE}-sha256.txt")
+          ls -lh release-apks
 
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: luz-isla-apks
-          path: app/build/outputs/apk/debug/*.apk
+          name: luz-isla-v${{ steps.app_version.outputs.version_name }}-b${{ steps.app_version.outputs.version_code }}
+          path: release-apks/*.apk
+
+      - name: Publish GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.app_version.outputs.release_tag }}
+          name: "Luz Isla v${{ steps.app_version.outputs.version_name }} (Build ${{ steps.app_version.outputs.version_code }})"
+          generate_release_notes: true
+          make_latest: true
+          body: |
+            Compilación automática de **Luz Isla – Horarios Eléctricos**.
+
+            - **Versión:** `${{ steps.app_version.outputs.version_name }}`
+            - **Código de compilación (`versionCode`):** `${{ steps.app_version.outputs.version_code }}`
+            - **Tipo de firma:** `${{ steps.build_apk.outputs.build_variant }}`
+            - **APK recomendado para la mayoría de teléfonos modernos:** `*-arm64-v8a.apk` o `*-universal.apk`
+          files: |
+            release-apks/*.apk
+            release-apks/*.txt

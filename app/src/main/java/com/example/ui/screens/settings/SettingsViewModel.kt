@@ -1,10 +1,12 @@
 package com.example.ui.screens.settings
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.data.preferences.UserPreferences
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.ImportMergeMode
@@ -14,12 +16,15 @@ import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
+import com.example.sync.AppUpdateService
+import com.example.sync.DistributionChannel
 import com.example.sync.ForecastSyncWorker
 import com.example.sync.HttpsSyncManager
 import com.example.sync.ShareHelper
 import com.example.sync.SolarSyncOutcome
 import com.example.sync.SunriseSunsetService
 import com.example.sync.SyncOutcome
+import com.example.sync.UpdateCheckResult
 import com.example.transfer.ConfigCodec
 import com.example.transfer.DecodedConfigResult
 import com.example.transfer.ImportSummary
@@ -51,6 +56,9 @@ data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
     val isSyncing: Boolean = false,
     val isSolarSyncing: Boolean = false,
+    val isCheckingUpdates: Boolean = false,
+    val updateAvailable: Boolean = false,
+    val distributionChannels: List<DistributionChannel> = AppUpdateService.defaultDistributionChannels(),
     val hasBackup: Boolean = false,
     val hasPrimaryHome: Boolean = false,
     val primaryHomeState: ScheduledState? = null,
@@ -68,12 +76,14 @@ class SettingsViewModel(
 
     private val isSyncing = MutableStateFlow(false)
     private val isSolarSyncing = MutableStateFlow(false)
+    private val isCheckingUpdates = MutableStateFlow(false)
     private val exportBundle = MutableStateFlow<ExportBundle?>(null)
     private val pendingImport = MutableStateFlow<PendingImportReview?>(null)
     private val feedbackMessage = MutableStateFlow<String?>(null)
 
     private val syncManager = HttpsSyncManager(repository, prefsRepo)
     private val solarSyncService = SunriseSunsetService(prefsRepo)
+    private val appUpdateService = AppUpdateService(prefsRepo)
 
     private val prefsAndBackupsFlow = combine(
         prefsRepo.preferencesFlow,
@@ -83,8 +93,12 @@ class SettingsViewModel(
         Triple(prefs, backups.isNotEmpty(), snapshot)
     }
 
-    private val syncingStateFlow = combine(isSyncing, isSolarSyncing) { urlSync, solarSync ->
-        urlSync to solarSync
+    private val syncingStateFlow = combine(
+        isSyncing,
+        isSolarSyncing,
+        isCheckingUpdates
+    ) { urlSync, solarSync, updateCheck ->
+        Triple(urlSync, solarSync, updateCheck)
     }
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -102,11 +116,22 @@ class SettingsViewModel(
         val primaryEval = primaryCircuit?.let {
             ScheduleEngine.evaluateCircuit(it, snapshot, Instant.now(), zoneId)
         }
+        val updateAvailable = AppUpdateService.isRemoteVersionNewer(
+            remoteTag = prefs.latestKnownTag,
+            releaseTitle = prefs.latestKnownTitle,
+            releaseBody = prefs.latestKnownNotes,
+            currentVersionName = BuildConfig.VERSION_NAME,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+            remoteVersionCodeOverride = prefs.latestKnownVersionCode.takeIf { it > 0 }
+        )
 
         SettingsUiState(
             prefs = prefs,
             isSyncing = syncFlags.first,
             isSolarSyncing = syncFlags.second,
+            isCheckingUpdates = syncFlags.third,
+            updateAvailable = updateAvailable,
+            distributionChannels = AppUpdateService.defaultDistributionChannels(),
             hasBackup = hasBackup,
             hasPrimaryHome = primaryCircuit != null,
             primaryHomeState = primaryEval?.state,
@@ -224,6 +249,40 @@ class SettingsViewModel(
             } else {
                 "Ícono predeterminado de Luz Isla restaurado."
             }
+        }
+    }
+
+    fun checkAppUpdatesNow() {
+        viewModelScope.launch {
+            isCheckingUpdates.value = true
+            val result = try {
+                appUpdateService.checkForUpdates(force = true)
+            } finally {
+                isCheckingUpdates.value = false
+            }
+            feedbackMessage.value = when (result) {
+                is UpdateCheckResult.UpdateAvailable ->
+                    "Nueva versión disponible: ${result.latestTag}."
+                is UpdateCheckResult.UpToDate ->
+                    "Ya tienes la última versión publicada (${result.latestTag})."
+                is UpdateCheckResult.NoReleasesYet ->
+                    "Aún no hay lanzamientos publicados en GitHub Releases."
+                is UpdateCheckResult.CheckFailed ->
+                    result.reason
+            }
+        }
+    }
+
+    fun openExternalUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val opened = runCatching {
+            appContext.startActivity(intent)
+            true
+        }.getOrDefault(false)
+        if (!opened) {
+            feedbackMessage.value = "No se encontró un navegador para abrir el enlace."
         }
     }
 

@@ -21,6 +21,8 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -51,6 +53,7 @@ import com.example.data.preferences.UserPreferences
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.notifications.ScheduleNotificationManager
+import com.example.sync.AppUpdateService
 import com.example.ui.screens.calendar.CalendarScreen
 import com.example.ui.screens.calendar.CalendarViewModel
 import com.example.ui.screens.calendar.CalendarViewMode
@@ -138,6 +141,14 @@ class MainActivity : ComponentActivity() {
                                 appContext = applicationContext,
                                 repository = repository,
                                 prefsRepo = prefsRepo,
+                                hasAppUpdateAvailable = AppUpdateService.isRemoteVersionNewer(
+                                    remoteTag = currentPrefs.latestKnownTag,
+                                    releaseTitle = currentPrefs.latestKnownTitle,
+                                    releaseBody = currentPrefs.latestKnownNotes,
+                                    currentVersionName = BuildConfig.VERSION_NAME,
+                                    currentVersionCode = BuildConfig.VERSION_CODE,
+                                    remoteVersionCodeOverride = currentPrefs.latestKnownVersionCode.takeIf { it > 0 }
+                                ),
                                 initialCircuitCode = deepLinkCircuitCode.value,
                                 onConsumeDeepLink = { deepLinkCircuitCode.value = null }
                             )
@@ -159,6 +170,7 @@ private fun LuzIslaApp(
     appContext: android.content.Context,
     repository: LuzIslaRepository,
     prefsRepo: UserPreferencesRepository,
+    hasAppUpdateAvailable: Boolean,
     initialCircuitCode: String?,
     onConsumeDeepLink: () -> Unit
 ) {
@@ -213,14 +225,23 @@ private fun LuzIslaApp(
                 NavigationBar {
                     tabs.forEach { tab ->
                         val selected = currentDestination?.hasRoute(tab.route::class) == true
+                        val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
                         NavigationBarItem(
                             selected = selected,
                             onClick = { navigateToTab(tab.route) },
                             icon = {
-                                Icon(
-                                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                    contentDescription = tab.label
-                                )
+                                BadgedBox(
+                                    badge = {
+                                        if (showUpdateDot) {
+                                            Badge()
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                        contentDescription = tab.label
+                                    )
+                                }
                             },
                             label = { Text(tab.label) },
                             modifier = Modifier.testTag(tab.testTag)
@@ -239,14 +260,23 @@ private fun LuzIslaApp(
                 NavigationRail {
                     tabs.forEach { tab ->
                         val selected = currentDestination?.hasRoute(tab.route::class) == true
+                        val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
                         NavigationRailItem(
                             selected = selected,
                             onClick = { navigateToTab(tab.route) },
                             icon = {
-                                Icon(
-                                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                    contentDescription = tab.label
-                                )
+                                BadgedBox(
+                                    badge = {
+                                        if (showUpdateDot) {
+                                            Badge()
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                        contentDescription = tab.label
+                                    )
+                                }
                             },
                             label = { Text(tab.label) },
                             modifier = Modifier.testTag(tab.testTag)

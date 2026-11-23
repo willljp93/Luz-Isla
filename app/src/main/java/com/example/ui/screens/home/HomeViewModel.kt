@@ -13,6 +13,7 @@ import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
+import com.example.sync.AppUpdateService
 import com.example.sync.ShareHelper
 import com.example.sync.SunriseSunsetService
 import com.example.widget.LauncherIconManager
@@ -90,6 +91,7 @@ class HomeViewModel(
             val prefs = prefsRepo.getSnapshot()
             val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
             SunriseSunsetService(prefsRepo).syncIfNeeded(zoneId)
+            AppUpdateService(prefsRepo).checkForUpdates(force = false)
         }
     }
 

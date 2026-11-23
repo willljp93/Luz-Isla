@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,12 +64,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.BuildConfig
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
+import com.example.sync.AppUpdateService
 import com.example.sync.SunriseSunsetService
+import com.example.sync.UpdateChannelStatus
 import com.example.ui.components.IslaEmblemBadge
 import com.example.ui.screens.onboarding.TimezonePickerDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -682,6 +687,202 @@ fun SettingsScreen(
                     }
                 }
 
+                // App updates & download channels
+                item(key = "app_updates_card") {
+                    SettingsSectionCard(title = "Actualizaciones y descargas") {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Versión instalada: v${BuildConfig.VERSION_NAME} (Comp. ${BuildConfig.VERSION_CODE})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = p.latestKnownStatus,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (state.updateAvailable) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (state.updateAvailable) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                }
+                            ) {
+                                Text(
+                                    text = if (state.updateAvailable) {
+                                        "Disponible ${AppUpdateService.normalizeVersionLabel(p.latestKnownTag)}"
+                                    } else {
+                                        "v${BuildConfig.VERSION_NAME}"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        if (p.lastUpdateCheckEpochMillis > 0L) {
+                            Text(
+                                text = "Última comprobación: ${ScheduleEngine.formatDateTimeReadable(p.lastUpdateCheckEpochMillis, p.use24HourFormat, activeZone)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (state.updateAvailable && p.latestKnownNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = p.latestKnownTitle.ifBlank { p.latestKnownTag },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = p.latestKnownNotes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (p.latestKnownApkName.isNotBlank()) {
+                                        Text(
+                                            text = "Archivo recomendado: ${p.latestKnownApkName}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = viewModel::checkAppUpdatesNow,
+                                enabled = !state.isCheckingUpdates,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("settings_check_updates_button")
+                            ) {
+                                if (state.isCheckingUpdates) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (state.isCheckingUpdates) "Buscando…" else "Comprobar")
+                            }
+
+                            val targetDownloadUrl = if (state.updateAvailable && p.latestKnownDownloadUrl.isNotBlank()) {
+                                p.latestKnownDownloadUrl
+                            } else {
+                                p.latestKnownReleasePageUrl.ifBlank { AppUpdateService.GITHUB_RELEASES_URL }
+                            }
+                            Button(
+                                onClick = { viewModel.openExternalUrl(targetDownloadUrl) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("settings_download_update_button")
+                            ) {
+                                Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (state.updateAvailable) "Actualizar" else "GitHub Releases")
+                            }
+                        }
+
+                        Text(
+                            text = "Canales de descarga",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.distributionChannels.forEach { channel ->
+                                val isActive = channel.status == UpdateChannelStatus.ACTIVE && !channel.url.isNullOrBlank()
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .then(
+                                            if (isActive) {
+                                                Modifier.clickable { viewModel.openExternalUrl(channel.url!!) }
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .testTag("update_channel_${channel.id}")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = channel.name,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = channel.subtitle,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isActive) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceContainerHighest
+                                            }
+                                        ) {
+                                            Text(
+                                                text = if (isActive) "Abrir" else "Próximamente",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (isActive) {
+                                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Disclaimer & App info
                 item(key = "disclaimer_card") {
                     Surface(
@@ -697,7 +898,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "Luz Isla – Horarios Eléctricos (v1.0.0)",
+                                    text = "Luz Isla – Horarios Eléctricos (v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE})",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )

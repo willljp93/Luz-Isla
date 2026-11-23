@@ -56,6 +56,16 @@ data class UserPreferences(
     val notifyNewForecast: Boolean = true,
     val notifyLeadMinutes: Int = 15,
     val notifyFavoritesOnly: Boolean = true,
+    val lastUpdateCheckEpochMillis: Long = 0L,
+    val latestKnownTag: String = "",
+    val latestKnownTitle: String = "",
+    val latestKnownNotes: String = "",
+    val latestKnownDownloadUrl: String = "",
+    val latestKnownReleasePageUrl: String = "",
+    val latestKnownApkName: String = "",
+    val latestKnownVersionCode: Int = 0,
+    val latestKnownPublishedAt: String = "",
+    val latestKnownStatus: String = "Sin comprobar actualizaciones",
     val widgetCircuitMap: Map<Int, String> = emptyMap()
 )
 
@@ -100,6 +110,16 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val NOTIFY_NEW_FORECAST = booleanPreferencesKey("notify_new_forecast")
         val NOTIFY_LEAD_MINUTES = intPreferencesKey("notify_lead_minutes")
         val NOTIFY_FAVORITES_ONLY = booleanPreferencesKey("notify_favorites_only")
+        val LAST_UPDATE_CHECK_MILLIS = longPreferencesKey("last_update_check_millis")
+        val LATEST_KNOWN_TAG = stringPreferencesKey("latest_known_tag")
+        val LATEST_KNOWN_TITLE = stringPreferencesKey("latest_known_title")
+        val LATEST_KNOWN_NOTES = stringPreferencesKey("latest_known_notes")
+        val LATEST_KNOWN_DOWNLOAD_URL = stringPreferencesKey("latest_known_download_url")
+        val LATEST_KNOWN_RELEASE_PAGE_URL = stringPreferencesKey("latest_known_release_page_url")
+        val LATEST_KNOWN_APK_NAME = stringPreferencesKey("latest_known_apk_name")
+        val LATEST_KNOWN_VERSION_CODE = intPreferencesKey("latest_known_version_code")
+        val LATEST_KNOWN_PUBLISHED_AT = stringPreferencesKey("latest_known_published_at")
+        val LATEST_KNOWN_STATUS = stringPreferencesKey("latest_known_status")
         val WIDGET_CIRCUIT_MAP = stringPreferencesKey("widget_circuit_map")
     }
 
@@ -152,6 +172,16 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             notifyNewForecast = prefs[Keys.NOTIFY_NEW_FORECAST] ?: true,
             notifyLeadMinutes = prefs[Keys.NOTIFY_LEAD_MINUTES] ?: 15,
             notifyFavoritesOnly = prefs[Keys.NOTIFY_FAVORITES_ONLY] ?: true,
+            lastUpdateCheckEpochMillis = prefs[Keys.LAST_UPDATE_CHECK_MILLIS] ?: 0L,
+            latestKnownTag = prefs[Keys.LATEST_KNOWN_TAG].orEmpty(),
+            latestKnownTitle = prefs[Keys.LATEST_KNOWN_TITLE].orEmpty(),
+            latestKnownNotes = prefs[Keys.LATEST_KNOWN_NOTES].orEmpty(),
+            latestKnownDownloadUrl = prefs[Keys.LATEST_KNOWN_DOWNLOAD_URL].orEmpty(),
+            latestKnownReleasePageUrl = prefs[Keys.LATEST_KNOWN_RELEASE_PAGE_URL].orEmpty(),
+            latestKnownApkName = prefs[Keys.LATEST_KNOWN_APK_NAME].orEmpty(),
+            latestKnownVersionCode = prefs[Keys.LATEST_KNOWN_VERSION_CODE] ?: 0,
+            latestKnownPublishedAt = prefs[Keys.LATEST_KNOWN_PUBLISHED_AT].orEmpty(),
+            latestKnownStatus = prefs[Keys.LATEST_KNOWN_STATUS] ?: "Sin comprobar actualizaciones",
             widgetCircuitMap = parsedWidgetMap
         )
     }
@@ -255,6 +285,42 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun recordSolarStatusSilently(statusMessage: String) {
         dataStore.edit {
             it[Keys.SOLAR_LAST_STATUS] = statusMessage
+        }
+    }
+
+    suspend fun saveUpdateCheckSuccess(
+        checkEpochMillis: Long,
+        latestTag: String,
+        latestTitle: String,
+        latestNotes: String,
+        downloadUrl: String,
+        releasePageUrl: String,
+        apkName: String,
+        versionCode: Int,
+        publishedAt: String,
+        statusMessage: String
+    ) {
+        dataStore.edit {
+            it[Keys.LAST_UPDATE_CHECK_MILLIS] = checkEpochMillis
+            it[Keys.LATEST_KNOWN_TAG] = latestTag
+            it[Keys.LATEST_KNOWN_TITLE] = latestTitle
+            it[Keys.LATEST_KNOWN_NOTES] = latestNotes
+            it[Keys.LATEST_KNOWN_DOWNLOAD_URL] = downloadUrl
+            it[Keys.LATEST_KNOWN_RELEASE_PAGE_URL] = releasePageUrl
+            it[Keys.LATEST_KNOWN_APK_NAME] = apkName
+            it[Keys.LATEST_KNOWN_VERSION_CODE] = versionCode
+            it[Keys.LATEST_KNOWN_PUBLISHED_AT] = publishedAt
+            it[Keys.LATEST_KNOWN_STATUS] = statusMessage
+        }
+    }
+
+    suspend fun recordUpdateCheckStatus(
+        checkEpochMillis: Long,
+        statusMessage: String
+    ) {
+        dataStore.edit {
+            it[Keys.LAST_UPDATE_CHECK_MILLIS] = checkEpochMillis
+            it[Keys.LATEST_KNOWN_STATUS] = statusMessage
         }
     }
 
