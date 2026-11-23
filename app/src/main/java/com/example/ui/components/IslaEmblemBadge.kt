@@ -74,7 +74,7 @@ fun IslaEmblemBadge(
 
     Surface(
         shape = CircleShape,
-        color = Color(0xFF161B25),
+        color = Color(0xFF0C5075),
         border = BorderStroke(2.dp, ringColor.copy(alpha = 0.85f)),
         shadowElevation = 3.dp,
         modifier = modifier
@@ -89,7 +89,7 @@ fun IslaEmblemBadge(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(Color(0xFF161B25))
+                .background(Color(0xFF0C5075))
                 .padding(2.dp)
         ) {
             Image(

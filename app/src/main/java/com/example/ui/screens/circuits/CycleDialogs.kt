@@ -47,9 +47,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableIntStateOf
 import com.example.domain.model.Circuit
 import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
+import com.example.ui.components.DateSelectorField
+import com.example.ui.components.TimeSelectorField
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -58,6 +62,7 @@ fun CycleEditorDialog(
     existing: RotationCycle?,
     groups: List<ScheduleGroup>,
     zoneId: ZoneId,
+    use24h: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (
         id: String?,
@@ -81,13 +86,16 @@ fun CycleEditorDialog(
     var outM by remember { mutableStateOf(((existing?.outageDurationMinutes ?: 720) % 60).toString()) }
     var refDate by remember {
         mutableStateOf(
-            existing?.let { CircuitsViewModel.formatEpochDateStr(it.referenceEpochMillis, zoneId) }
-                ?: LocalDate.now(zoneId).toString()
+            existing?.let { Instant.ofEpochMilli(it.referenceEpochMillis).atZone(zoneId).toLocalDate() }
+                ?: LocalDate.now(zoneId)
         )
     }
-    var refTime by remember {
-        mutableStateOf(
-            existing?.let { CircuitsViewModel.formatEpochTime24Str(it.referenceEpochMillis, zoneId) } ?: "00:00"
+    var refMinute by remember {
+        mutableIntStateOf(
+            existing?.let {
+                val lt = Instant.ofEpochMilli(it.referenceEpochMillis).atZone(zoneId).toLocalTime()
+                lt.hour * 60 + lt.minute
+            } ?: 0
         )
     }
     var orderedGroupIds by remember { mutableStateOf(existing?.orderedGroupIds ?: emptyList()) }
@@ -179,16 +187,17 @@ fun CycleEditorDialog(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = refDate,
-                        onValueChange = { refDate = it },
-                        label = { Text("Fecha inicio (AAAA-MM-DD)") },
-                        modifier = Modifier.weight(1.3f)
+                    DateSelectorField(
+                        label = "Fecha inicio",
+                        date = refDate,
+                        onDateSelected = { refDate = it },
+                        modifier = Modifier.weight(1.25f)
                     )
-                    OutlinedTextField(
-                        value = refTime,
-                        onValueChange = { refTime = it },
-                        label = { Text("Hora (HH:mm)") },
+                    TimeSelectorField(
+                        label = "Hora inicio",
+                        minuteOfDay = refMinute,
+                        use24h = use24h,
+                        onTimeSelected = { refMinute = it },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -298,8 +307,8 @@ fun CycleEditorDialog(
                     svcM.toIntOrNull() ?: 0,
                     outH.toIntOrNull() ?: 12,
                     outM.toIntOrNull() ?: 0,
-                    refDate,
-                    refTime,
+                    refDate.toString(),
+                    CircuitsViewModel.formatMinute24h(refMinute),
                     orderedGroupIds,
                     isActive
                 )
@@ -317,14 +326,23 @@ fun GroupMembersPickerDialog(
     groupName: String,
     allCircuits: List<Circuit>,
     initialSelectedCodes: Set<String>,
+    currentGroupId: String? = null,
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit
 ) {
     var search by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf(initialSelectedCodes) }
-    val filtered = remember(search, allCircuits) {
-        if (search.isBlank()) allCircuits
-        else allCircuits.filter {
+    val availableCircuits = remember(allCircuits, currentGroupId, initialSelectedCodes) {
+        allCircuits.filter { c ->
+            c.groupId == null ||
+                (currentGroupId != null && c.groupId == currentGroupId) ||
+                c.code in initialSelectedCodes
+        }
+    }
+    val excludedCount = (allCircuits.size - availableCircuits.size).coerceAtLeast(0)
+    val filtered = remember(search, availableCircuits) {
+        if (search.isBlank()) availableCircuits
+        else availableCircuits.filter {
             it.code.contains(search.trim(), ignoreCase = true) ||
                 it.customName.contains(search.trim(), ignoreCase = true) ||
                 it.comment.contains(search.trim(), ignoreCase = true)
@@ -344,47 +362,63 @@ fun GroupMembersPickerDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                ) {
-                    items(filtered, key = { it.code }) { circuit ->
-                        val isChecked = circuit.code in selected
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    selected = if (isChecked) selected - circuit.code else selected + circuit.code
-                                }
-                                .background(
-                                    if (isChecked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                    else androidx.compose.ui.graphics.Color.Transparent
-                                )
-                                .padding(horizontal = 6.dp, vertical = 6.dp)
-                        ) {
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = {
-                                    selected = if (it) selected + circuit.code else selected - circuit.code
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = circuit.displayTitle(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (circuit.comment.isNotBlank()) {
-                                    Text(
-                                        text = circuit.comment,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                val remainingUnpicked = availableCircuits.count { it.code !in selected }
+                Text(
+                    text = "Sin grupo disponibles: $remainingUnpicked" +
+                        if (excludedCount > 0) " • Ocultos ($excludedCount ya en otros grupos)" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (availableCircuits.isEmpty()) {
+                    Text(
+                        text = "Todos los circuitos ya están asignados a otros grupos.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                    ) {
+                        items(filtered, key = { it.code }) { circuit ->
+                            val isChecked = circuit.code in selected
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selected = if (isChecked) selected - circuit.code else selected + circuit.code
+                                    }
+                                    .background(
+                                        if (isChecked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                        else androidx.compose.ui.graphics.Color.Transparent
                                     )
+                                    .padding(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = {
+                                        selected = if (it) selected + circuit.code else selected - circuit.code
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = circuit.displayTitle(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    if (circuit.comment.isNotBlank()) {
+                                        Text(
+                                            text = circuit.comment,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }

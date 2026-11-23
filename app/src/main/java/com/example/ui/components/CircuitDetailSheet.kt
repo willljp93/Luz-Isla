@@ -65,6 +65,9 @@ fun CircuitDetailBottomSheet(
     nowMillis: Long,
     use24h: Boolean = false,
     zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
+    sunriseMinutes: Int = 6 * 60 + 30,
+    sunsetMinutes: Int = 18 * 60 + 30,
+    enableElectricAnimations: Boolean = true,
     onDismiss: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onSetPrimaryHome: (String) -> Unit,
@@ -358,6 +361,9 @@ fun CircuitDetailBottomSheet(
                 selectedSegment = selectedSegment,
                 use24h = use24h,
                 zoneId = zoneId,
+                sunriseMinutes = sunriseMinutes,
+                sunsetMinutes = sunsetMinutes,
+                enableElectricAnimations = enableElectricAnimations,
                 onSegmentTap = { selectedSegment = it }
             )
             TimelineSegmentLegend()

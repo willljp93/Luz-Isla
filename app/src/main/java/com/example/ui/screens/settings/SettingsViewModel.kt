@@ -17,6 +17,8 @@ import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.ForecastSyncWorker
 import com.example.sync.HttpsSyncManager
 import com.example.sync.ShareHelper
+import com.example.sync.SolarSyncOutcome
+import com.example.sync.SunriseSunsetService
 import com.example.sync.SyncOutcome
 import com.example.transfer.ConfigCodec
 import com.example.transfer.DecodedConfigResult
@@ -48,6 +50,7 @@ data class PendingImportReview(
 data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
     val isSyncing: Boolean = false,
+    val isSolarSyncing: Boolean = false,
     val hasBackup: Boolean = false,
     val hasPrimaryHome: Boolean = false,
     val primaryHomeState: ScheduledState? = null,
@@ -64,11 +67,13 @@ class SettingsViewModel(
 ) : ViewModel() {
 
     private val isSyncing = MutableStateFlow(false)
+    private val isSolarSyncing = MutableStateFlow(false)
     private val exportBundle = MutableStateFlow<ExportBundle?>(null)
     private val pendingImport = MutableStateFlow<PendingImportReview?>(null)
     private val feedbackMessage = MutableStateFlow<String?>(null)
 
     private val syncManager = HttpsSyncManager(repository, prefsRepo)
+    private val solarSyncService = SunriseSunsetService(prefsRepo)
 
     private val prefsAndBackupsFlow = combine(
         prefsRepo.preferencesFlow,
@@ -78,13 +83,17 @@ class SettingsViewModel(
         Triple(prefs, backups.isNotEmpty(), snapshot)
     }
 
+    private val syncingStateFlow = combine(isSyncing, isSolarSyncing) { urlSync, solarSync ->
+        urlSync to solarSync
+    }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         prefsAndBackupsFlow,
-        isSyncing,
+        syncingStateFlow,
         exportBundle,
         pendingImport,
         feedbackMessage
-    ) { base, syncing, export, pending, msg ->
+    ) { base, syncFlags, export, pending, msg ->
         val prefs = base.first
         val hasBackup = base.second
         val snapshot: ScheduleSnapshot = base.third
@@ -96,7 +105,8 @@ class SettingsViewModel(
 
         SettingsUiState(
             prefs = prefs,
-            isSyncing = syncing,
+            isSyncing = syncFlags.first,
+            isSolarSyncing = syncFlags.second,
             hasBackup = hasBackup,
             hasPrimaryHome = primaryCircuit != null,
             primaryHomeState = primaryEval?.state,
@@ -124,6 +134,16 @@ class SettingsViewModel(
             prefsRepo.setTimezonePreference(useSystem, manualTimezoneId)
             ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
             WidgetUpdateHelper.refreshAllWidgets(appContext)
+            val updated = prefsRepo.getSnapshot()
+            if (updated.autoSolarSyncEnabled) {
+                val zone = ScheduleEngine.effectiveZone(updated.useSystemTimezone, updated.manualTimezoneId)
+                isSolarSyncing.value = true
+                try {
+                    solarSyncService.syncIfNeeded(zoneId = zone, force = false)
+                } finally {
+                    isSolarSyncing.value = false
+                }
+            }
         }
     }
 
@@ -136,7 +156,52 @@ class SettingsViewModel(
 
     fun setDayNightTimes(sunriseMinutes: Int, sunsetMinutes: Int) {
         viewModelScope.launch {
-            prefsRepo.setDayNightTimes(sunriseMinutes, sunsetMinutes)
+            prefsRepo.setDayNightTimes(sunriseMinutes, sunsetMinutes, manualOverride = true)
+            feedbackMessage.value = "Horario Día/Noche guardado en modo manual."
+        }
+    }
+
+    fun setDayNightAutoMode(enabled: Boolean) {
+        viewModelScope.launch {
+            if (!enabled) {
+                prefsRepo.setAutoSolarSyncEnabled(false, statusMessage = "Modo manual personalizado")
+                return@launch
+            }
+            prefsRepo.setAutoSolarSyncEnabled(true)
+            syncSolarInternal(force = false, showFeedback = true)
+        }
+    }
+
+    fun syncSolarTimesNow() {
+        viewModelScope.launch {
+            syncSolarInternal(force = true, showFeedback = true)
+        }
+    }
+
+    private suspend fun syncSolarInternal(force: Boolean, showFeedback: Boolean) {
+        val prefs = prefsRepo.getSnapshot()
+        val zone = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+        isSolarSyncing.value = true
+        val outcome = try {
+            solarSyncService.syncIfNeeded(zoneId = zone, force = force)
+        } finally {
+            isSolarSyncing.value = false
+        }
+        if (showFeedback) {
+            val use24 = prefs.use24HourFormat
+            feedbackMessage.value = when (outcome) {
+                is SolarSyncOutcome.SyncedFromNetwork ->
+                    "Sol sincronizado (Nueva Gerona): alba ${ScheduleEngine.formatMinuteOfDay(outcome.sunriseMinutes, use24)} · ocaso ${ScheduleEngine.formatMinuteOfDay(outcome.sunsetMinutes, use24)}."
+                is SolarSyncOutcome.UsedTodayCache ->
+                    "Horarios solares de hoy ya actualizados en caché local."
+                is SolarSyncOutcome.OfflineFallback ->
+                    if (outcome.usedStaleCache) {
+                        "Sin conexión: usando caché solar local."
+                    } else {
+                        "Sin conexión: usando valores locales configurados."
+                    }
+                is SolarSyncOutcome.SkippedManualMode -> null
+            }
         }
     }
 

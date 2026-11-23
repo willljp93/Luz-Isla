@@ -43,6 +43,8 @@ import com.example.domain.model.ManualException
 import com.example.domain.model.RelationType
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
+import com.example.ui.components.DateSelectorField
+import com.example.ui.components.TimeSelectorField
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -237,6 +239,7 @@ fun GroupEditorDialog(
     if (showMemberPicker) {
         GroupMembersPickerDialog(
             groupName = name.ifBlank { "Grupo" },
+            currentGroupId = existing?.id,
             allCircuits = allCircuits,
             initialSelectedCodes = selectedCodes,
             onDismiss = { showMemberPicker = false },
@@ -252,15 +255,16 @@ fun GroupEditorDialog(
 fun FixedRuleEditorDialog(
     circuits: List<Circuit>,
     existing: FixedScheduleRule?,
+    use24h: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (String?, String, Int, String, String, String, String, String) -> Unit
 ) {
     var selectedCode by remember { mutableStateOf(existing?.circuitCode ?: circuits.firstOrNull()?.code.orEmpty()) }
     var daysMask by remember { mutableIntStateOf(existing?.daysOfWeekMask ?: 0b1111111) }
-    var startStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.startMinuteOfDay) } ?: "09:00") }
-    var endStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.endMinuteOfDay) } ?: "17:00") }
-    var validFrom by remember { mutableStateOf(existing?.validFromEpochDay?.let { LocalDate.ofEpochDay(it).toString() } ?: "") }
-    var validTo by remember { mutableStateOf(existing?.validToEpochDay?.let { LocalDate.ofEpochDay(it).toString() } ?: "") }
+    var startMinute by remember { mutableIntStateOf(existing?.startMinuteOfDay ?: 9 * 60) }
+    var endMinute by remember { mutableIntStateOf(existing?.endMinuteOfDay ?: 17 * 60) }
+    var validFromDate by remember { mutableStateOf(existing?.validFromEpochDay?.let { LocalDate.ofEpochDay(it) }) }
+    var validToDate by remember { mutableStateOf(existing?.validToEpochDay?.let { LocalDate.ofEpochDay(it) }) }
     var label by remember { mutableStateOf(existing?.label ?: "") }
     var showCircuitPicker by remember { mutableStateOf(false) }
 
@@ -299,16 +303,18 @@ fun FixedRuleEditorDialog(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = startStr,
-                        onValueChange = { startStr = it },
-                        label = { Text("Inicio (HH:mm)") },
+                    TimeSelectorField(
+                        label = "Inicio",
+                        minuteOfDay = startMinute,
+                        use24h = use24h,
+                        onTimeSelected = { startMinute = it },
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
-                        value = endStr,
-                        onValueChange = { endStr = it },
-                        label = { Text("Fin (HH:mm)") },
+                    TimeSelectorField(
+                        label = "Fin",
+                        minuteOfDay = endMinute,
+                        use24h = use24h,
+                        onTimeSelected = { endMinute = it },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -327,16 +333,20 @@ fun FixedRuleEditorDialog(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = validFrom,
-                        onValueChange = { validFrom = it },
-                        label = { Text("Desde (opc.)") },
+                    DateSelectorField(
+                        label = "Desde (opc.)",
+                        date = validFromDate,
+                        placeholder = "Sin inicio",
+                        onDateSelected = { validFromDate = it },
+                        onClear = { validFromDate = null },
                         modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
-                        value = validTo,
-                        onValueChange = { validTo = it },
-                        label = { Text("Hasta (opc.)") },
+                    DateSelectorField(
+                        label = "Hasta (opc.)",
+                        date = validToDate,
+                        placeholder = "Sin fin",
+                        onDateSelected = { validToDate = it },
+                        onClear = { validToDate = null },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -350,7 +360,16 @@ fun FixedRuleEditorDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(existing?.id, selectedCode, daysMask, startStr, endStr, validFrom, validTo, label)
+                onSave(
+                    existing?.id,
+                    selectedCode,
+                    daysMask,
+                    CircuitsViewModel.formatMinute24h(startMinute),
+                    CircuitsViewModel.formatMinute24h(endMinute),
+                    validFromDate?.toString().orEmpty(),
+                    validToDate?.toString().orEmpty(),
+                    label
+                )
                 onDismiss()
             }) { Text("Guardar") }
         },
@@ -376,18 +395,19 @@ fun ExceptionEditorDialog(
     circuits: List<Circuit>,
     existing: ManualException?,
     zoneId: ZoneId,
+    use24h: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (String?, String, String, String, String, Boolean, String) -> Unit
 ) {
     var code by remember { mutableStateOf(existing?.circuitCode ?: circuits.firstOrNull()?.code.orEmpty()) }
-    var dateStr by remember {
+    var selectedDate by remember {
         mutableStateOf(
-            existing?.let { LocalDate.ofEpochDay(it.dateEpochDay).toString() }
-                ?: LocalDate.now(zoneId).toString()
+            existing?.let { LocalDate.ofEpochDay(it.dateEpochDay) }
+                ?: LocalDate.now(zoneId)
         )
     }
-    var startStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.startMinuteOfDay) } ?: "00:00") }
-    var endStr by remember { mutableStateOf(existing?.let { CircuitsViewModel.formatMinute24h(it.endMinuteOfDay) } ?: "24:00") }
+    var startMinute by remember { mutableIntStateOf(existing?.startMinuteOfDay ?: 0) }
+    var endMinute by remember { mutableIntStateOf(existing?.endMinuteOfDay ?: 1440) }
     var hasService by remember { mutableStateOf(existing?.hasService ?: false) }
     var reason by remember { mutableStateOf(existing?.reason ?: "") }
     var showCircuitPicker by remember { mutableStateOf(false) }
@@ -419,15 +439,27 @@ fun ExceptionEditorDialog(
                         Icon(Icons.Filled.ArrowDropDown, contentDescription = "Seleccionar circuito")
                     }
                 }
-                OutlinedTextField(
-                    value = dateStr,
-                    onValueChange = { dateStr = it },
-                    label = { Text("Fecha (AAAA-MM-DD)") },
+                DateSelectorField(
+                    label = "Fecha",
+                    date = selectedDate,
+                    onDateSelected = { selectedDate = it },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = startStr, onValueChange = { startStr = it }, label = { Text("Inicio") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(value = endStr, onValueChange = { endStr = it }, label = { Text("Fin") }, modifier = Modifier.weight(1f))
+                    TimeSelectorField(
+                        label = "Inicio",
+                        minuteOfDay = startMinute,
+                        use24h = use24h,
+                        onTimeSelected = { startMinute = it },
+                        modifier = Modifier.weight(1f)
+                    )
+                    TimeSelectorField(
+                        label = "Fin",
+                        minuteOfDay = endMinute,
+                        use24h = use24h,
+                        onTimeSelected = { endMinute = it },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 SwitchRow("Tiene servicio en esta excepción", hasService) { hasService = it }
                 OutlinedTextField(
@@ -440,7 +472,15 @@ fun ExceptionEditorDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(existing?.id, code, dateStr, startStr, endStr, hasService, reason)
+                onSave(
+                    existing?.id,
+                    code,
+                    selectedDate.toString(),
+                    CircuitsViewModel.formatMinute24h(startMinute),
+                    CircuitsViewModel.formatMinute24h(endMinute),
+                    hasService,
+                    reason
+                )
                 onDismiss()
             }) { Text("Guardar") }
         },

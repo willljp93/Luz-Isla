@@ -231,13 +231,19 @@ fun CircuitsScreen(
                                         label = { Text("Mostrar inactivos") }
                                     )
                                     FilterChip(
-                                        selected = state.selectedGroupFilterId == null,
+                                        selected = state.selectedGroupFilterId == null && !state.fixedOnly,
                                         onClick = { viewModel.filterByGroup(null) },
                                         label = { Text("Todos los grupos") }
                                     )
+                                    FilterChip(
+                                        selected = state.fixedOnly,
+                                        onClick = viewModel::toggleFixedOnly,
+                                        label = { Text("Fijos") },
+                                        modifier = Modifier.testTag("circuits_filter_fixed")
+                                    )
                                     state.groups.forEach { grp ->
                                         FilterChip(
-                                            selected = state.selectedGroupFilterId == grp.id,
+                                            selected = !state.fixedOnly && state.selectedGroupFilterId == grp.id,
                                             onClick = { viewModel.filterByGroup(grp.id) },
                                             label = { Text(grp.name) }
                                         )
@@ -463,6 +469,7 @@ fun CircuitsScreen(
             existing = existing,
             groups = state.groups,
             zoneId = state.zoneId,
+            use24h = state.use24h,
             onDismiss = { editingCycle = null },
             onSave = viewModel::saveCycle
         )
@@ -484,6 +491,7 @@ fun CircuitsScreen(
         val currentMembers = state.allCircuits.filter { it.groupId == grp.id }.map { it.code }.toSet()
         GroupMembersPickerDialog(
             groupName = grp.name,
+            currentGroupId = grp.id,
             allCircuits = state.allCircuits,
             initialSelectedCodes = currentMembers,
             onDismiss = { pickingMembersForGroup = null },
@@ -498,6 +506,7 @@ fun CircuitsScreen(
         FixedRuleEditorDialog(
             circuits = state.allCircuits,
             existing = existing,
+            use24h = state.use24h,
             onDismiss = { editingFixed = null },
             onSave = viewModel::saveFixedRule
         )
@@ -508,6 +517,7 @@ fun CircuitsScreen(
             circuits = state.allCircuits,
             existing = existing,
             zoneId = state.zoneId,
+            use24h = state.use24h,
             onDismiss = { editingException = null },
             onSave = viewModel::saveManualException
         )

@@ -52,6 +52,9 @@ data class CalendarUiState(
     val hasAnyForecastOnSelectedDate: Boolean = false,
     val use24h: Boolean = false,
     val zoneId: ZoneId = ScheduleEngine.HAVANA_ZONE,
+    val sunriseMinutes: Int = 6 * 60 + 30,
+    val sunsetMinutes: Int = 18 * 60 + 30,
+    val enableElectricAnimations: Boolean = true,
     val snapshot: ScheduleSnapshot = ScheduleSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
 )
 
@@ -128,6 +131,9 @@ class CalendarViewModel(
             hasAnyForecastOnSelectedDate = hasData,
             use24h = prefs.use24HourFormat,
             zoneId = zoneId,
+            sunriseMinutes = prefs.sunriseMinutes,
+            sunsetMinutes = prefs.sunsetMinutes,
+            enableElectricAnimations = prefs.enableElectricAnimations,
             snapshot = snapshot
         )
     }.stateIn(

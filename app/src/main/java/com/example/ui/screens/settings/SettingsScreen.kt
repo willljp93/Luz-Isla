@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Share
@@ -56,14 +58,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
+import com.example.sync.SunriseSunsetService
 import com.example.ui.components.IslaEmblemBadge
 import com.example.ui.screens.onboarding.TimezonePickerDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -77,6 +82,7 @@ fun SettingsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val uriHandler = LocalUriHandler.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     val p = state.prefs
@@ -300,15 +306,129 @@ fun SettingsScreen(
                             onCheckedChange = viewModel::setEnableElectricAnimations
                         )
 
-                        OutlinedButton(
-                            onClick = { showDayNightDialog = true },
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Filled.WbTwilight, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "Día / Noche: ${ScheduleEngine.formatMinuteOfDay(p.sunriseMinutes, p.use24HourFormat)} – ${ScheduleEngine.formatMinuteOfDay(p.sunsetMinutes, p.use24HourFormat)}"
-                            )
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.WbTwilight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "Amanecer y atardecer",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (p.autoSolarSyncEnabled) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.secondaryContainer
+                                        }
+                                    ) {
+                                        Text(
+                                            text = if (p.autoSolarSyncEnabled) "Automático" else "Manual",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "Día / Noche: ${ScheduleEngine.formatMinuteOfDay(p.sunriseMinutes, p.use24HourFormat)} – ${ScheduleEngine.formatMinuteOfDay(p.sunsetMinutes, p.use24HourFormat)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Text(
+                                    text = buildString {
+                                        append(p.solarLastStatus)
+                                        if (p.solarCachedDate.isNotBlank()) {
+                                            append(" • Caché: ${p.solarCachedDate}")
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { showDayNightDialog = true },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("settings_day_night_config_button")
+                                    ) {
+                                        Text("Configurar")
+                                    }
+                                    Button(
+                                        onClick = viewModel::syncSolarTimesNow,
+                                        enabled = !state.isSolarSyncing,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("settings_solar_sync_now_button")
+                                    ) {
+                                        if (state.isSolarSyncing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Sincronizar")
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .clickable {
+                                            runCatching { uriHandler.openUri(SunriseSunsetService.ATTRIBUTION_URL) }
+                                        }
+                                        .padding(vertical = 2.dp)
+                                        .testTag("settings_solar_attribution_link")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.OpenInNew,
+                                        contentDescription = "Abrir sunrisesunset.io",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Horarios solares de Nueva Gerona por sunrisesunset.io",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textDecoration = TextDecoration.Underline
+                                    )
+                                }
+                            }
                         }
 
                         Surface(
@@ -632,10 +752,19 @@ fun SettingsScreen(
 
     if (showDayNightDialog) {
         DayNightTimeDialog(
+            isAutoMode = p.autoSolarSyncEnabled,
+            isSyncing = state.isSolarSyncing,
+            statusMessage = p.solarLastStatus,
+            cachedDate = p.solarCachedDate,
             initialSunriseMinutes = p.sunriseMinutes,
             initialSunsetMinutes = p.sunsetMinutes,
             use24h = p.use24HourFormat,
-            onSave = { sunrise, sunset ->
+            onSyncNow = viewModel::syncSolarTimesNow,
+            onSelectAuto = {
+                viewModel.setDayNightAutoMode(true)
+                showDayNightDialog = false
+            },
+            onSaveManual = { sunrise, sunset ->
                 viewModel.setDayNightTimes(sunrise, sunset)
                 showDayNightDialog = false
             },

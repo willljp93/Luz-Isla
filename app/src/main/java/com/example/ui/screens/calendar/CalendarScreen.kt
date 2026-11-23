@@ -22,10 +22,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,19 +35,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
+import com.example.domain.model.Circuit
 import com.example.ui.components.Continuous3DTickerTimeline
 import com.example.ui.components.Timeline24hBar
 import com.example.ui.components.TimelineIntervalsSummaryList
-import com.example.ui.components.TimelineSegmentDetailCard
 import com.example.ui.components.TimelineSegmentLegend
+import com.example.ui.screens.circuits.CircuitSelectorDialog
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
 
@@ -61,6 +67,7 @@ fun CalendarScreen(
     val nowMillis = remember(state.selectedDate, today) {
         if (state.selectedDate == today) System.currentTimeMillis() else null
     }
+    var showCircuitPickerDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -81,76 +88,91 @@ fun CalendarScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        val isToday = state.selectedDate == today
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isToday) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { viewModel.selectDate(today) }
+                                .testTag("calendar_today_button")
                         ) {
-                            IconButton(
-                                onClick = { viewModel.shiftDays(-1) },
-                                modifier = Modifier.testTag("calendar_prev_day")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Día anterior")
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = ScheduleEngine.formatDateEs(state.selectedDate),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
+                                Icon(
+                                    Icons.Filled.CalendarToday,
+                                    contentDescription = "Ir a hoy",
+                                    tint = if (isToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                if (state.selectedDate == LocalDate.of(2026, 11, 19) ||
-                                    state.selectedDate == LocalDate.of(2026, 11, 20)
+                                Text(
+                                    text = "Hoy",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { viewModel.shiftDays(-1) },
+                                    modifier = Modifier.testTag("calendar_prev_day")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Día anterior")
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Text(
-                                        text = "Datos históricos de prueba (19–20 nov 2026)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = statusColors.favorite
+                                        text = ScheduleEngine.formatDateEs(state.selectedDate),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                    if (state.selectedDate == LocalDate.of(2026, 11, 19) ||
+                                        state.selectedDate == LocalDate.of(2026, 11, 20)
+                                    ) {
+                                        Text(
+                                            text = "Histórico de prueba",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = statusColors.favorite,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { viewModel.shiftDays(1) },
+                                    modifier = Modifier.testTag("calendar_next_day")
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Día siguiente")
                                 }
                             }
-                            IconButton(
-                                onClick = { viewModel.shiftDays(1) },
-                                modifier = Modifier.testTag("calendar_next_day")
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Día siguiente")
-                            }
                         }
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        AssistChip(
-                            onClick = { viewModel.selectDate(today) },
-                            leadingIcon = { Icon(Icons.Filled.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            label = { Text("Hoy") }
-                        )
-                        (0L..6L).forEach { offset ->
-                            val d = today.plusDays(offset)
-                            FilterChip(
-                                selected = state.selectedDate == d,
-                                onClick = { viewModel.selectDate(d) },
-                                label = { Text(ScheduleEngine.formatShortDate(d).substring(0, 5)) }
-                            )
-                        }
-                        FilterChip(
-                            selected = state.selectedDate == LocalDate.of(2026, 11, 19),
-                            onClick = { viewModel.selectDate(LocalDate.of(2026, 11, 19)) },
-                            label = { Text("Prueba 19/11/26") }
-                        )
-                        FilterChip(
-                            selected = state.selectedDate == LocalDate.of(2026, 11, 20),
-                            onClick = { viewModel.selectDate(LocalDate.of(2026, 11, 20)) },
-                            label = { Text("Prueba 20/11/26") }
-                        )
                     }
 
                     Row(
@@ -176,27 +198,6 @@ fun CalendarScreen(
                     }
 
                     TimelineSegmentLegend()
-                }
-            }
-
-            if (state.viewMode != CalendarViewMode.BY_CIRCUIT) {
-                state.selectedSegment?.let { seg ->
-                    item(key = "selected_segment_detail") {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            if (state.selectedSegmentOwner.isNotBlank()) {
-                                Text(
-                                    text = "Detalle seleccionado — ${state.selectedSegmentOwner}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            TimelineSegmentDetailCard(
-                                segment = seg,
-                                use24h = state.use24h,
-                                zoneId = state.zoneId
-                            )
-                        }
-                    }
                 }
             }
 
@@ -256,9 +257,12 @@ fun CalendarScreen(
                                     currentTimeMillis = nowMillis,
                                     use24h = state.use24h,
                                     zoneId = state.zoneId,
-                                    selectedSegment = if (state.selectedSegmentOwner == row.circuit.displayTitle()) state.selectedSegment else null,
-                                    onSegmentTap = { seg ->
-                                        viewModel.selectSegment(row.circuit.displayTitle(), seg)
+                                    sunriseMinutes = state.sunriseMinutes,
+                                    sunsetMinutes = state.sunsetMinutes,
+                                    enableElectricAnimations = state.enableElectricAnimations,
+                                    onSegmentTap = {
+                                        viewModel.selectCircuit(row.circuit.code)
+                                        viewModel.selectViewMode(CalendarViewMode.BY_CIRCUIT)
                                     }
                                 )
                             }
@@ -268,20 +272,13 @@ fun CalendarScreen(
 
                 CalendarViewMode.BY_CIRCUIT -> {
                     item(key = "circuit_selector") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            state.activeCircuits.forEach { circuit ->
-                                FilterChip(
-                                    selected = state.selectedCircuitCode == circuit.code,
-                                    onClick = { viewModel.selectCircuit(circuit.code) },
-                                    label = { Text(circuit.displayTitle()) }
-                                )
-                            }
-                        }
+                        CircuitDropdownStepperBar(
+                            circuits = state.activeCircuits,
+                            selectedCode = state.selectedCircuitCode,
+                            favoriteColor = statusColors.favorite,
+                            onSelectCode = viewModel::selectCircuit,
+                            onOpenPicker = { showCircuitPickerDialog = true }
+                        )
                     }
                     val selectedRow = state.circuitTimelines.firstOrNull { it.circuit.code == state.selectedCircuitCode }
                         ?: state.activeCircuits.firstOrNull { it.code == state.selectedCircuitCode }?.let { c ->
@@ -320,6 +317,9 @@ fun CalendarScreen(
                                         currentTimeMillis = nowMillis,
                                         use24h = state.use24h,
                                         zoneId = state.zoneId,
+                                        sunriseMinutes = state.sunriseMinutes,
+                                        sunsetMinutes = state.sunsetMinutes,
+                                        enableElectricAnimations = state.enableElectricAnimations,
                                         selectedSegment = state.selectedSegment,
                                         onSegmentTap = { seg ->
                                             viewModel.selectSegment(selectedRow.circuit.displayTitle(), seg)
@@ -342,20 +342,13 @@ fun CalendarScreen(
 
                 CalendarViewMode.WEEKLY_7_DAYS -> {
                     item(key = "weekly_circuit_picker") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            state.activeCircuits.forEach { circuit ->
-                                FilterChip(
-                                    selected = state.selectedCircuitCode == circuit.code,
-                                    onClick = { viewModel.selectCircuit(circuit.code) },
-                                    label = { Text(circuit.displayTitle()) }
-                                )
-                            }
-                        }
+                        CircuitDropdownStepperBar(
+                            circuits = state.activeCircuits,
+                            selectedCode = state.selectedCircuitCode,
+                            favoriteColor = statusColors.favorite,
+                            onSelectCode = viewModel::selectCircuit,
+                            onOpenPicker = { showCircuitPickerDialog = true }
+                        )
                     }
                     items(state.weeklyTimeline.entries.toList(), key = { it.key.toEpochDay() }) { (day, segments) ->
                         Surface(
@@ -382,9 +375,9 @@ fun CalendarScreen(
                                     currentTimeMillis = if (day == today) System.currentTimeMillis() else null,
                                     use24h = state.use24h,
                                     zoneId = state.zoneId,
-                                    onSegmentTap = { seg ->
-                                        viewModel.selectSegment(ScheduleEngine.formatDateEs(day), seg)
-                                    }
+                                    sunriseMinutes = state.sunriseMinutes,
+                                    sunsetMinutes = state.sunsetMinutes,
+                                    enableElectricAnimations = state.enableElectricAnimations
                                 )
                             }
                         }
@@ -435,15 +428,128 @@ fun CalendarScreen(
                                         currentTimeMillis = nowMillis,
                                         use24h = state.use24h,
                                         zoneId = state.zoneId,
-                                        onSegmentTap = { seg ->
-                                            viewModel.selectSegment(row.group.name, seg)
-                                        }
+                                        sunriseMinutes = state.sunriseMinutes,
+                                        sunsetMinutes = state.sunsetMinutes,
+                                        enableElectricAnimations = state.enableElectricAnimations
                                     )
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (showCircuitPickerDialog) {
+        CircuitSelectorDialog(
+            title = "Seleccionar circuito",
+            circuits = state.activeCircuits,
+            selectedCode = state.selectedCircuitCode.orEmpty(),
+            onSelect = { code ->
+                viewModel.selectCircuit(code)
+                showCircuitPickerDialog = false
+            },
+            onDismiss = { showCircuitPickerDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun CircuitDropdownStepperBar(
+    circuits: List<Circuit>,
+    selectedCode: String?,
+    favoriteColor: androidx.compose.ui.graphics.Color,
+    onSelectCode: (String) -> Unit,
+    onOpenPicker: () -> Unit
+) {
+    val currentIndex = circuits.indexOfFirst { it.code.equals(selectedCode, ignoreCase = true) }
+    val selectedCircuit = circuits.getOrNull(currentIndex) ?: circuits.firstOrNull()
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+        ) {
+            IconButton(
+                onClick = {
+                    if (circuits.isNotEmpty()) {
+                        val prev = if (currentIndex <= 0) circuits.lastIndex else currentIndex - 1
+                        onSelectCode(circuits[prev].code)
+                    }
+                },
+                enabled = circuits.size > 1,
+                modifier = Modifier.testTag("calendar_prev_circuit")
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Circuito anterior")
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = circuits.isNotEmpty(), onClick = onOpenPicker)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .testTag("calendar_circuit_picker_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Bolt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selectedCircuit?.displayTitle() ?: "Sin circuitos",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (circuits.size > 1 && currentIndex >= 0) {
+                        Text(
+                            text = "Circuito ${currentIndex + 1} de ${circuits.size} • Toca para buscar",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (selectedCircuit?.isFavorite == true) {
+                    Icon(
+                        Icons.Filled.Star,
+                        contentDescription = "Favorito",
+                        tint = favoriteColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Icon(
+                    Icons.Filled.ArrowDropDown,
+                    contentDescription = "Buscar circuito",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = {
+                    if (circuits.isNotEmpty()) {
+                        val next = if (currentIndex < 0 || currentIndex >= circuits.lastIndex) 0 else currentIndex + 1
+                        onSelectCode(circuits[next].code)
+                    }
+                },
+                enabled = circuits.size > 1,
+                modifier = Modifier.testTag("calendar_next_circuit")
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Siguiente circuito")
             }
         }
     }

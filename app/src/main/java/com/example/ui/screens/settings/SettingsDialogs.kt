@@ -1,5 +1,6 @@
 package com.example.ui.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,10 +13,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +37,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.example.data.repository.ImportMergeMode
 import com.example.domain.engine.ScheduleEngine
+import com.example.sync.SunriseSunsetService
 import com.example.transfer.ConfigCodec
+import com.example.ui.components.TimeSelectorField
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.ZoneId
 
@@ -202,73 +213,183 @@ fun ImportReviewDialog(
 
 @Composable
 fun DayNightTimeDialog(
+    isAutoMode: Boolean,
+    isSyncing: Boolean,
+    statusMessage: String,
+    cachedDate: String,
     initialSunriseMinutes: Int,
     initialSunsetMinutes: Int,
     use24h: Boolean,
-    onSave: (Int, Int) -> Unit,
+    onSyncNow: () -> Unit,
+    onSelectAuto: () -> Unit,
+    onSaveManual: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
+    var autoSelected by remember(isAutoMode) { mutableStateOf(isAutoMode) }
     var sunrise by remember(initialSunriseMinutes) { mutableIntStateOf(initialSunriseMinutes) }
     var sunset by remember(initialSunsetMinutes) { mutableIntStateOf(initialSunsetMinutes) }
+
+    LaunchedEffect(initialSunriseMinutes, initialSunsetMinutes, isAutoMode) {
+        if (isAutoMode) {
+            sunrise = initialSunriseMinutes
+            sunset = initialSunsetMinutes
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Horario de día y noche") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    text = "Define a qué hora inicia el tono visual diurno y a qué hora cambia a modo nocturno.",
+                    text = "Configura cómo se determinan el amanecer y el atardecer para los degradados día/noche.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                MinuteStepperRow(
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = autoSelected,
+                        onClick = { autoSelected = true },
+                        label = { Text("Automático") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("solar_mode_auto_chip")
+                    )
+                    FilterChip(
+                        selected = !autoSelected,
+                        onClick = { autoSelected = false },
+                        label = { Text("Manual") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("solar_mode_manual_chip")
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = if (autoSelected) {
+                                "Sincronización automática · ${SunriseSunsetService.DEFAULT_LOCATION_LABEL}"
+                            } else {
+                                "Modo manual activo: la sincronización automática no sobrescribirá tus horas."
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = buildString {
+                                append(statusMessage)
+                                if (cachedDate.isNotBlank()) {
+                                    append(" • Caché: $cachedDate")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                autoSelected = true
+                                onSyncNow()
+                            },
+                            enabled = !isSyncing,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("solar_dialog_sync_now_button")
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (isSyncing) "Sincronizando…" else "Sincronizar ahora (Nueva Gerona)")
+                        }
+                    }
+                }
+
+                TimeSelectorField(
                     label = "Amanecer (Inicio de día)",
-                    minutes = sunrise,
+                    minuteOfDay = sunrise,
                     use24h = use24h,
-                    onMinus = { sunrise = (sunrise - 15).coerceAtLeast(4 * 60) },
-                    onPlus = { sunrise = (sunrise + 15).coerceAtMost(10 * 60) }
+                    onTimeSelected = { picked ->
+                        sunrise = picked.coerceIn(0, 1439)
+                        autoSelected = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                MinuteStepperRow(
+
+                TimeSelectorField(
                     label = "Atardecer (Inicio de noche)",
-                    minutes = sunset,
+                    minuteOfDay = sunset,
                     use24h = use24h,
-                    onMinus = { sunset = (sunset - 15).coerceAtLeast(16 * 60) },
-                    onPlus = { sunset = (sunset + 15).coerceAtMost(22 * 60) }
+                    onTimeSelected = { picked ->
+                        sunset = picked.coerceIn(0, 1439)
+                        autoSelected = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            runCatching { uriHandler.openUri(SunriseSunsetService.ATTRIBUTION_URL) }
+                        }
+                        .padding(vertical = 4.dp)
+                        .testTag("solar_attribution_dialog_link")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.OpenInNew,
+                        contentDescription = "Abrir sunrisesunset.io",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Datos astronómicos cortesía de sunrisesunset.io",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(sunrise, sunset) }) { Text("Guardar") }
+            Button(
+                onClick = {
+                    if (autoSelected) {
+                        onSelectAuto()
+                    } else {
+                        onSaveManual(sunrise, sunset)
+                    }
+                },
+                modifier = Modifier.testTag("solar_dialog_confirm_button")
+            ) {
+                Text(if (autoSelected) "Usar Automático" else "Guardar Manual")
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
         }
     )
-}
-
-@Composable
-private fun MinuteStepperRow(
-    label: String,
-    minutes: Int,
-    use24h: Boolean,
-    onMinus: () -> Unit,
-    onPlus: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(text = label, style = MaterialTheme.typography.labelLarge)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            OutlinedButton(onClick = onMinus) { Text("-15m") }
-            Text(
-                text = ScheduleEngine.formatMinuteOfDay(minutes, use24h),
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = JetBrainsMonoFontFamily,
-                fontWeight = FontWeight.Bold
-            )
-            OutlinedButton(onClick = onPlus) { Text("+15m") }
-        }
-    }
 }

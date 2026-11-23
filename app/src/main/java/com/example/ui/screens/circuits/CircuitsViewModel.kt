@@ -48,6 +48,7 @@ data class CircuitsAdminUiState(
     val programmingSubTab: ProgrammingSubTab = ProgrammingSubTab.CYCLES,
     val searchQuery: String = "",
     val selectedGroupFilterId: String? = null,
+    val fixedOnly: Boolean = false,
     val favoritesOnly: Boolean = false,
     val showInactive: Boolean = true,
     val circuits: List<Circuit> = emptyList(),
@@ -72,18 +73,26 @@ class CircuitsViewModel(
     private val programmingSubTab = MutableStateFlow(ProgrammingSubTab.CYCLES)
     private val searchQuery = MutableStateFlow("")
     private val selectedGroupFilterId = MutableStateFlow<String?>(null)
+    private val fixedOnly = MutableStateFlow(false)
     private val favoritesOnly = MutableStateFlow(false)
     private val showInactive = MutableStateFlow(true)
     private val statusMessage = MutableStateFlow<String?>(null)
+
+    private val selectionFilterFlow = combine(
+        selectedGroupFilterId,
+        fixedOnly,
+        favoritesOnly
+    ) { grpId, fixOnly, fav ->
+        Triple(grpId, fixOnly, fav)
+    }
 
     private val filterControlsFlow = combine(
         primaryTab,
         programmingSubTab,
         searchQuery,
-        selectedGroupFilterId,
-        favoritesOnly
-    ) { pTab, subTab, query, grpId, fav ->
-        FilterControls(pTab, subTab, query, grpId, fav)
+        selectionFilterFlow
+    ) { pTab, subTab, query, sel ->
+        FilterControls(pTab, subTab, query, sel.first, sel.second, sel.third)
     }
 
     val uiState: StateFlow<CircuitsAdminUiState> = combine(
@@ -98,12 +107,13 @@ class CircuitsViewModel(
             .filter { c ->
                 val matchesActive = showInact || c.isActive
                 val matchesFav = !controls.favoritesOnly || c.isFavorite || c.isPrimaryHome
+                val matchesFixed = !controls.fixedOnly || c.scheduleType == ScheduleType.FIXED
                 val matchesGroup = controls.selectedGroupFilterId == null || c.groupId == controls.selectedGroupFilterId
                 val matchesQuery = controls.searchQuery.isBlank() ||
                     c.code.contains(controls.searchQuery, ignoreCase = true) ||
                     c.customName.contains(controls.searchQuery, ignoreCase = true) ||
                     c.comment.contains(controls.searchQuery, ignoreCase = true)
-                matchesActive && matchesFav && matchesGroup && matchesQuery
+                matchesActive && matchesFav && matchesFixed && matchesGroup && matchesQuery
             }
             .sortedWith(compareBy<Circuit> { !it.isActive }.thenBy { it.displayOrder }.thenBy { it.code })
 
@@ -112,6 +122,7 @@ class CircuitsViewModel(
             programmingSubTab = controls.programmingSubTab,
             searchQuery = controls.searchQuery,
             selectedGroupFilterId = controls.selectedGroupFilterId,
+            fixedOnly = controls.fixedOnly,
             favoritesOnly = controls.favoritesOnly,
             showInactive = showInact,
             circuits = filteredCircuits,
@@ -145,6 +156,15 @@ class CircuitsViewModel(
 
     fun filterByGroup(groupId: String?) {
         selectedGroupFilterId.value = groupId
+        fixedOnly.value = false
+    }
+
+    fun toggleFixedOnly() {
+        val next = !fixedOnly.value
+        fixedOnly.value = next
+        if (next) {
+            selectedGroupFilterId.value = null
+        }
     }
 
     fun toggleFavoritesOnly() {
@@ -514,6 +534,7 @@ class CircuitsViewModel(
         val programmingSubTab: ProgrammingSubTab,
         val searchQuery: String,
         val selectedGroupFilterId: String?,
+        val fixedOnly: Boolean,
         val favoritesOnly: Boolean
     )
 

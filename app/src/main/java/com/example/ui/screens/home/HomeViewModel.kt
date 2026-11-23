@@ -14,6 +14,7 @@ import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.ShareHelper
+import com.example.sync.SunriseSunsetService
 import com.example.widget.LauncherIconManager
 import com.example.widget.WidgetUpdateHelper
 import kotlinx.coroutines.delay
@@ -86,6 +87,9 @@ class HomeViewModel(
             repository.ensureSeeded()
             ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
             WidgetUpdateHelper.refreshAllWidgets(appContext)
+            val prefs = prefsRepo.getSnapshot()
+            val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+            SunriseSunsetService(prefsRepo).syncIfNeeded(zoneId)
         }
     }
 
