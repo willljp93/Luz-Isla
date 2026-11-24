@@ -43,6 +43,13 @@ enum class ThemeMode {
     SYSTEM
 }
 
+enum class WidgetCardStyle(val label: String) {
+    SYSTEM("Automático"),
+    LIGHT("Claro"),
+    DARK("Oscuro"),
+    TRANSPARENT("Transparente")
+}
+
 @Serializable
 data class Circuit(
     val code: String,

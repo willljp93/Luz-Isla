@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ThemeMode
+import com.example.domain.model.WidgetCardStyle
 import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
@@ -348,6 +349,26 @@ fun SettingsScreen(
                             checked = p.enableElectricAnimations,
                             onCheckedChange = viewModel::setEnableElectricAnimations
                         )
+
+                        Text(
+                            text = "Tarjetas de widgets",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            WidgetCardStyle.entries.forEach { style ->
+                                FilterChip(
+                                    selected = p.widgetCardStyle == style,
+                                    onClick = { viewModel.setWidgetCardStyle(style) },
+                                    label = { Text(style.label, maxLines = 1, softWrap = false) },
+                                    modifier = Modifier.testTag("settings_widget_style_${style.name.lowercase()}")
+                                )
+                            }
+                        }
 
                         Surface(
                             shape = RoundedCornerShape(14.dp),

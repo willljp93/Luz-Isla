@@ -3,7 +3,7 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_card_bg"
+    android:background="@drawable/widget_card_bg_light"
     android:orientation="vertical"
     android:padding="12dp">
 
@@ -22,7 +22,7 @@
             android:maxLines="1"
             android:text="A210 – Camilo"
             android:textColor="#0F1F1A"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <ImageButton
@@ -31,57 +31,72 @@
             android:layout_height="32dp"
             android:background="@android:color/transparent"
             android:contentDescription="Actualizar widget"
-            android:src="@android:drawable/ic_popup_sync"
-            android:tint="#0B6E4F" />
+            android:padding="4dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_popup_sync" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_status_badge"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:background="@drawable/widget_status_pill_bg"
-        android:paddingLeft="8dp"
-        android:paddingTop="3dp"
-        android:paddingRight="8dp"
-        android:paddingBottom="3dp"
-        android:text="CON SERVICIO PROGRAMADO"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/widget_next_change"
+        <TextView
+            android:id="@+id/widget_status_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/widget_pill_service"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:paddingLeft="10dp"
+            android:paddingTop="3dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="3dp"
+            android:text="CON SERVICIO"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_remaining"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Faltan 02:15:30"
+            android:textColor="#0B6E4F"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="Próximo cambio: 08:00 PM"
-        android:textColor="#31443D"
-        android:textSize="12sp" />
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/widget_remaining"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="Faltan 02:15:30"
-        android:textColor="#0B6E4F"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widget_next_change"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Próximo cambio: 08:00 PM"
+            android:textColor="#31443D"
+            android:textSize="12sp" />
 
-    <TextView
-        android:id="@+id/widget_updated_at"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="Estado programado • Toca para abrir"
-        android:textColor="#60726B"
-        android:textSize="10sp" />
+        <TextView
+            android:id="@+id/widget_updated_at"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Programado • Act. 12:00 PM"
+            android:textColor="#60726B"
+            android:textSize="10sp" />
+    </LinearLayout>
 
 </LinearLayout>

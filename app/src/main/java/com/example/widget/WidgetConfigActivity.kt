@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,12 +18,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -36,13 +39,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.AppDatabase
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
-import com.example.domain.model.ThemeMode
+import com.example.domain.model.WidgetCardStyle
 import com.example.ui.theme.LuzIslaTheme
 import kotlinx.coroutines.launch
 
@@ -77,6 +81,9 @@ class WidgetConfigActivity : ComponentActivity() {
                 )
             )
             var query by remember { mutableStateOf("") }
+            var selectedStyle by remember(prefs.widgetStyleMap[appWidgetId], prefs.widgetCardStyle) {
+                mutableStateOf(prefs.widgetStyleMap[appWidgetId] ?: prefs.widgetCardStyle)
+            }
             val scope = rememberCoroutineScope()
 
             val activeCircuits = remember(snapshot.circuits, query) {
@@ -96,7 +103,7 @@ class WidgetConfigActivity : ComponentActivity() {
             ) {
                 Scaffold(
                     topBar = {
-                        TopAppBar(title = { Text("Elegir circuito para el widget") })
+                        TopAppBar(title = { Text("Configurar widget") })
                     }
                 ) { padding ->
                     Column(
@@ -105,12 +112,36 @@ class WidgetConfigActivity : ComponentActivity() {
                             .padding(padding)
                             .padding(horizontal = 16.dp)
                     ) {
+                        Text(
+                            text = "Estilo de tarjeta",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            WidgetCardStyle.entries.forEach { style ->
+                                FilterChip(
+                                    selected = selectedStyle == style,
+                                    onClick = { selectedStyle = style },
+                                    label = { Text(style.label) },
+                                    modifier = Modifier.testTag("widget_config_style_${style.name.lowercase()}")
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
                             label = { Text("Buscar código, nombre o reparto") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("widget_config_search")
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         LazyColumn(
@@ -124,9 +155,11 @@ class WidgetConfigActivity : ComponentActivity() {
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .testTag("widget_config_circuit_${circuit.code}")
                                         .clickable {
                                             scope.launch {
                                                 prefsRepo.setWidgetCircuit(appWidgetId, circuit.code)
+                                                prefsRepo.setWidgetInstanceStyle(appWidgetId, selectedStyle)
                                                 WidgetUpdateHelper.refreshAllWidgets(applicationContext)
                                                 val resultValue = Intent().putExtra(
                                                     AppWidgetManager.EXTRA_APPWIDGET_ID,

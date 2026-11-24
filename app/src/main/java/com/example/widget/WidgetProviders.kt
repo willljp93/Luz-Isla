@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -17,43 +18,42 @@ import java.util.concurrent.TimeUnit
 
 class PrimaryFavoriteWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                WidgetUpdateHelper.refreshAllWidgets(context)
-                WidgetRefreshWorker.ensureScheduled(context)
-            } finally {
-                pending.finish()
-            }
-        }
+        triggerAsyncRefresh(context, schedulePeriodic = true)
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        triggerAsyncRefresh(context, schedulePeriodic = false)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == WidgetUpdateHelper.ACTION_WIDGET_REFRESH) {
-            val pending = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    WidgetUpdateHelper.refreshAllWidgets(context)
-                } finally {
-                    pending.finish()
-                }
-            }
+        if (intent.action == WidgetUpdateHelper.ACTION_WIDGET_REFRESH ||
+            intent.action == Intent.ACTION_CONFIGURATION_CHANGED
+        ) {
+            triggerAsyncRefresh(context, schedulePeriodic = false)
         }
     }
 }
 
 class ConfigurableCircuitWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                WidgetUpdateHelper.refreshAllWidgets(context)
-                WidgetRefreshWorker.ensureScheduled(context)
-            } finally {
-                pending.finish()
-            }
-        }
+        triggerAsyncRefresh(context, schedulePeriodic = true)
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        triggerAsyncRefresh(context, schedulePeriodic = false)
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
@@ -69,15 +69,24 @@ class ConfigurableCircuitWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == WidgetUpdateHelper.ACTION_WIDGET_REFRESH) {
-            val pending = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    WidgetUpdateHelper.refreshAllWidgets(context)
-                } finally {
-                    pending.finish()
-                }
+        if (intent.action == WidgetUpdateHelper.ACTION_WIDGET_REFRESH ||
+            intent.action == Intent.ACTION_CONFIGURATION_CHANGED
+        ) {
+            triggerAsyncRefresh(context, schedulePeriodic = false)
+        }
+    }
+}
+
+private fun AppWidgetProvider.triggerAsyncRefresh(context: Context, schedulePeriodic: Boolean) {
+    val pending = goAsync()
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            WidgetUpdateHelper.refreshAllWidgets(context)
+            if (schedulePeriodic) {
+                WidgetRefreshWorker.ensureScheduled(context)
             }
+        } finally {
+            pending.finish()
         }
     }
 }

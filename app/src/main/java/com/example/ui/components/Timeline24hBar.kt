@@ -57,6 +57,7 @@ import com.example.domain.model.TimelineSegment
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.PI
@@ -111,14 +112,28 @@ fun Timeline24hBar(
         0f
     }
 
-    // Simplified night sky <-> day sky border gradient (fewer colors, atmospheric blue progression)
-    val dayNightBrush = remember(sunriseMinutes, sunsetMinutes) {
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val isDarkTheme = surfaceColor.luminance() < 0.5f
+    val nowAccent = MaterialTheme.colorScheme.primary
+    val nowCore = if (isDarkTheme) {
+        lerp(Color.White, MaterialTheme.colorScheme.primaryContainer, 0.32f)
+    } else {
+        lerp(MaterialTheme.colorScheme.onSurface, nowAccent, 0.35f)
+    }
+    val nowCasing = if (isDarkTheme) {
+        surfaceColor.copy(alpha = 0.88f)
+    } else {
+        Color.White.copy(alpha = 0.92f)
+    }
+
+    // Atmospheric night sky <-> day sky border gradient, noticeably brighter in dark mode for crisp contrast
+    val dayNightBrush = remember(sunriseMinutes, sunsetMinutes, isDarkTheme) {
         val sr = (sunriseMinutes / 1440f).coerceIn(0.14f, 0.44f)
         val ss = (sunsetMinutes / 1440f).coerceIn(0.56f, 0.88f)
-        val nightSky = Color(0xFF0B162C)
-        val transitionSky = Color(0xFF1D4ED8)
-        val daySky = Color(0xFF38BDF8)
-        val middaySky = Color(0xFF7DD3FC)
+        val nightSky = if (isDarkTheme) Color(0xFF4F6D9A) else Color(0xFF10254A)
+        val transitionSky = if (isDarkTheme) Color(0xFF60A5FA) else Color(0xFF2563EB)
+        val daySky = if (isDarkTheme) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
+        val middaySky = if (isDarkTheme) Color(0xFFE0F2FE) else Color(0xFF7DD3FC)
 
         Brush.horizontalGradient(
             colorStops = arrayOf(
@@ -469,17 +484,17 @@ fun Timeline24hBar(
                     }
                 }
 
-                // 5. Crisp current-time marker needle with top pointer and luminous halo
+                // 5. Theme-harmonized current-time marker needle with subtle casing, themed pointer, and soft aura
                 if (currentTimeMillis != null && currentTimeMillis in dayStart..dayEnd) {
                     val nowFrac = ((currentTimeMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
                     val x = (nowFrac * w).coerceIn(3f, (w - 3f).coerceAtLeast(3f))
-                    val auraHalf = 8.dp.toPx()
+                    val auraHalf = 9.dp.toPx()
 
                     drawRect(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                Color.White.copy(alpha = 0.45f),
+                                nowAccent.copy(alpha = if (isDarkTheme) 0.42f else 0.30f),
                                 Color.Transparent
                             ),
                             startX = x - auraHalf,
@@ -489,34 +504,46 @@ fun Timeline24hBar(
                         size = Size(auraHalf * 2f, h)
                     )
 
+                    // Crisp contrast casing so needle reads cleanly over both service green and outage coral
                     drawLine(
-                        color = Color.Black.copy(alpha = 0.32f),
+                        color = nowCasing,
                         start = Offset(x, 0f),
                         end = Offset(x, h),
-                        strokeWidth = 4.dp.toPx()
+                        strokeWidth = 3.8.dp.toPx()
                     )
 
+                    // Inner needle tinted harmoniously with active theme
                     drawLine(
-                        color = Color.White,
+                        color = nowCore,
                         start = Offset(x, 0f),
                         end = Offset(x, h),
-                        strokeWidth = 2.4.dp.toPx()
+                        strokeWidth = 2.0.dp.toPx()
                     )
 
-                    val arrowHalf = 4.5.dp.toPx()
-                    val arrowDepth = 5.5.dp.toPx().coerceAtMost(h * 0.35f)
+                    val arrowHalf = 4.8.dp.toPx()
+                    val arrowDepth = 5.8.dp.toPx().coerceAtMost(h * 0.36f)
                     val arrowPath = Path().apply {
                         moveTo(x - arrowHalf, 0f)
                         lineTo(x + arrowHalf, 0f)
                         lineTo(x, arrowDepth)
                         close()
                     }
-                    drawPath(path = arrowPath, color = Color.White)
+                    drawPath(
+                        path = arrowPath,
+                        color = nowCasing,
+                        style = Stroke(width = 1.4.dp.toPx())
+                    )
+                    drawPath(path = arrowPath, color = nowAccent)
 
                     drawCircle(
-                        color = Color.White,
-                        radius = 2.4.dp.toPx(),
-                        center = Offset(x, (h - 2.4.dp.toPx()).coerceAtLeast(0f))
+                        color = nowCasing,
+                        radius = 3.2.dp.toPx(),
+                        center = Offset(x, (h - 3.0.dp.toPx()).coerceAtLeast(0f))
+                    )
+                    drawCircle(
+                        color = nowAccent,
+                        radius = 2.0.dp.toPx(),
+                        center = Offset(x, (h - 3.0.dp.toPx()).coerceAtLeast(0f))
                     )
                 }
             }

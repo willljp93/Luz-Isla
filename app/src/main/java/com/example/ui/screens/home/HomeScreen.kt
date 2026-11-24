@@ -111,11 +111,17 @@ fun HomeScreen(
     }
 
     val screenBackdrop = DayNightAmbientScreenBrush(
-        isDaytime = state.isDaytime,
+        nowMillis = state.nowMillis,
+        zoneId = state.zoneId,
+        sunriseMinutes = state.sunriseMinutes,
+        sunsetMinutes = state.sunsetMinutes,
         themeMode = state.themeMode
     )
     val heroBrush = rememberHeroDayNightBrush(
-        isDaytime = state.isDaytime,
+        nowMillis = state.nowMillis,
+        zoneId = state.zoneId,
+        sunriseMinutes = state.sunriseMinutes,
+        sunsetMinutes = state.sunsetMinutes,
         themeMode = state.themeMode
     )
 
@@ -250,6 +256,8 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             DayNightChip(
+                                nowMillis = state.nowMillis,
+                                zoneId = state.zoneId,
                                 isDaytime = state.isDaytime,
                                 sunriseMinutes = state.sunriseMinutes,
                                 sunsetMinutes = state.sunsetMinutes,

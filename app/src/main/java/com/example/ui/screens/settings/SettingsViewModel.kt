@@ -15,6 +15,7 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
+import com.example.domain.model.WidgetCardStyle
 import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
@@ -149,7 +150,17 @@ class SettingsViewModel(
     )
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { prefsRepo.setThemeMode(mode) }
+        viewModelScope.launch {
+            prefsRepo.setThemeMode(mode)
+            WidgetUpdateHelper.refreshAllWidgets(appContext)
+        }
+    }
+
+    fun setWidgetCardStyle(style: WidgetCardStyle) {
+        viewModelScope.launch {
+            prefsRepo.setWidgetCardStyle(style)
+            WidgetUpdateHelper.refreshAllWidgets(appContext)
+        }
     }
 
     fun setDynamicColor(enabled: Boolean) {

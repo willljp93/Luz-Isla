@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.domain.model.ThemeMode
+import com.example.domain.model.WidgetCardStyle
 import com.example.domain.version.AppVersionConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -71,7 +72,9 @@ data class UserPreferences(
     val latestKnownVersionCode: Int = 0,
     val latestKnownPublishedAt: String = "",
     val latestKnownStatus: String = "Sin comprobar actualizaciones",
-    val widgetCircuitMap: Map<Int, String> = emptyMap()
+    val widgetCircuitMap: Map<Int, String> = emptyMap(),
+    val widgetCardStyle: WidgetCardStyle = WidgetCardStyle.SYSTEM,
+    val widgetStyleMap: Map<Int, WidgetCardStyle> = emptyMap()
 )
 
 class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
@@ -130,6 +133,8 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val LATEST_KNOWN_PUBLISHED_AT = stringPreferencesKey("latest_known_published_at")
         val LATEST_KNOWN_STATUS = stringPreferencesKey("latest_known_status")
         val WIDGET_CIRCUIT_MAP = stringPreferencesKey("widget_circuit_map")
+        val WIDGET_CARD_STYLE = stringPreferencesKey("widget_card_style")
+        val WIDGET_STYLE_MAP = stringPreferencesKey("widget_style_map")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -141,6 +146,20 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         } else {
             emptyMap()
         }
+        val widgetStyleRaw = prefs[Keys.WIDGET_STYLE_MAP].orEmpty()
+        val parsedWidgetStyleMap = if (widgetStyleRaw.isNotBlank()) {
+            runCatching { json.decodeFromString<Map<Int, String>>(widgetStyleRaw) }
+                .getOrDefault(emptyMap())
+                .mapNotNull { (id, name) ->
+                    runCatching { id to WidgetCardStyle.valueOf(name) }.getOrNull()
+                }
+                .toMap()
+        } else {
+            emptyMap()
+        }
+        val parsedGlobalWidgetStyle = runCatching {
+            WidgetCardStyle.valueOf(prefs[Keys.WIDGET_CARD_STYLE] ?: WidgetCardStyle.SYSTEM.name)
+        }.getOrDefault(WidgetCardStyle.SYSTEM)
         val activeNum = prefs[Keys.ACTIVE_CONFIG_VERSION] ?: AppVersionConfig.APP_VERSION_CODE
         val activeTs = prefs[Keys.ACTIVE_CONFIG_TIMESTAMP] ?: 0L
         val activeName = AppVersionConfig.formatConfigVersionDisplay(
@@ -202,7 +221,9 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             latestKnownVersionCode = prefs[Keys.LATEST_KNOWN_VERSION_CODE] ?: 0,
             latestKnownPublishedAt = prefs[Keys.LATEST_KNOWN_PUBLISHED_AT].orEmpty(),
             latestKnownStatus = prefs[Keys.LATEST_KNOWN_STATUS] ?: "Sin comprobar actualizaciones",
-            widgetCircuitMap = parsedWidgetMap
+            widgetCircuitMap = parsedWidgetMap,
+            widgetCardStyle = parsedGlobalWidgetStyle,
+            widgetStyleMap = parsedWidgetStyleMap
         )
     }
 
@@ -460,6 +481,22 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    suspend fun setWidgetCardStyle(style: WidgetCardStyle) {
+        dataStore.edit { it[Keys.WIDGET_CARD_STYLE] = style.name }
+    }
+
+    suspend fun setWidgetInstanceStyle(appWidgetId: Int, style: WidgetCardStyle?) {
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.WIDGET_STYLE_MAP]?.let { raw ->
+                runCatching { json.decodeFromString<Map<Int, String>>(raw) }.getOrDefault(emptyMap())
+            } ?: emptyMap()
+            val updated = current.toMutableMap().apply {
+                if (style == null) remove(appWidgetId) else put(appWidgetId, style.name)
+            }
+            prefs[Keys.WIDGET_STYLE_MAP] = json.encodeToString(updated)
+        }
+    }
+
     suspend fun removeWidgetCircuits(appWidgetIds: IntArray) {
         dataStore.edit { prefs ->
             val current = prefs[Keys.WIDGET_CIRCUIT_MAP]?.let { raw ->
@@ -469,6 +506,14 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
                 appWidgetIds.forEach { remove(it) }
             }
             prefs[Keys.WIDGET_CIRCUIT_MAP] = json.encodeToString(updated)
+
+            val currentStyles = prefs[Keys.WIDGET_STYLE_MAP]?.let { raw ->
+                runCatching { json.decodeFromString<Map<Int, String>>(raw) }.getOrDefault(emptyMap())
+            } ?: emptyMap()
+            val updatedStyles = currentStyles.toMutableMap().apply {
+                appWidgetIds.forEach { remove(it) }
+            }
+            prefs[Keys.WIDGET_STYLE_MAP] = json.encodeToString(updatedStyles)
         }
     }
 }
