@@ -50,6 +50,17 @@ enum class WidgetCardStyle(val label: String) {
     TRANSPARENT("Transparente")
 }
 
+enum class BottomBarBehavior(val label: String, val description: String) {
+    AUTO(
+        label = "Automático (scroll)",
+        description = "Se oculta suavemente al desplazarte hacia abajo y reaparece al subir."
+    ),
+    PILL_HANDLE(
+        label = "Píldora plegable",
+        description = "Muestra una flecha para ocultarlo por completo sin dejar franja inferior."
+    )
+}
+
 @Serializable
 data class Circuit(
     val code: String,

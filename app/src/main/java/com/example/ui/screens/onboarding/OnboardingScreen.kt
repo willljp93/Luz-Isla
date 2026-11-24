@@ -236,7 +236,7 @@ fun OnboardingScreen(
                             }
                             ThemeChoiceCard(
                                 title = "Automática ($sysOffsetLabel)",
-                                subtitle = "${sysZone.id} • Hora: ${ScheduleEngine.formatTime(nowMillis, use24h, sysZone)}",
+                                subtitle = "${ScheduleEngine.formatZoneSummary(sysZone)} • Hora: ${ScheduleEngine.formatTime(nowMillis, use24h, sysZone)}",
                                 icon = Icons.Filled.Public,
                                 selected = useSystemTz,
                                 onClick = { useSystemTz = true }

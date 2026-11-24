@@ -242,6 +242,24 @@ class ScheduleEngineTest {
         }
         assertEquals("America/Havana", ScheduleEngine.representativeZoneIdForOffset(-5, winterInstant))
     }
+
+    @Test
+    fun `formatZoneSummary hides technical Etc GMT identifiers and keepAmPmTogether avoids breaking spaces`() {
+        val winterInstant = java.time.Instant.parse("2026-11-23T12:00:00Z")
+        assertTrue(ScheduleEngine.isTechnicalOffsetZoneId("Etc/GMT+4"))
+        assertFalse(ScheduleEngine.isTechnicalOffsetZoneId("America/Havana"))
+
+        assertEquals("GMT-4", ScheduleEngine.formatZoneSummary("Etc/GMT+4", winterInstant))
+        assertEquals("America/Havana (GMT-5)", ScheduleEngine.formatZoneSummary("America/Havana", winterInstant))
+
+        val formattedNbsp = ScheduleEngine.keepAmPmTogether("08:34\u202Fa.\u00A0m.")
+        assertFalse(formattedNbsp.contains(' '))
+        assertTrue(formattedNbsp.contains('\u00A0'))
+
+        val noonHavana12 = ScheduleEngine.formatTime12h(havanaMillis(LocalDate.of(2026, 11, 23), 12, 30))
+        assertFalse(noonHavana12.contains(' '))
+        assertTrue(noonHavana12.contains('\u00A0'))
+    }
 }
 
 

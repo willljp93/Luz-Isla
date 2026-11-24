@@ -16,6 +16,7 @@ import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.ShareHelper
 import com.example.sync.SunriseSunsetService
+import com.example.sync.UnifiedSyncCoordinator
 import com.example.widget.LauncherIconManager
 import com.example.widget.WidgetUpdateHelper
 import kotlinx.coroutines.delay
@@ -90,8 +91,13 @@ class HomeViewModel(
             WidgetUpdateHelper.refreshAllWidgets(appContext)
             val prefs = prefsRepo.getSnapshot()
             val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
-            SunriseSunsetService(prefsRepo).syncIfNeeded(zoneId)
-            AppUpdateService(prefsRepo).checkForUpdates(force = false)
+            if (prefs.checkAllOnAppOpen) {
+                UnifiedSyncCoordinator(appContext, repository, prefsRepo)
+                    .runChecks(zoneId = zoneId, isManualTrigger = false)
+            } else {
+                SunriseSunsetService(prefsRepo).syncIfNeeded(zoneId)
+                AppUpdateService(prefsRepo).checkForUpdates(force = false)
+            }
         }
     }
 

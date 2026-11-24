@@ -53,6 +53,7 @@ import com.example.ui.components.Timeline24hBar
 import com.example.ui.components.TimelineIntervalsSummaryList
 import com.example.ui.components.TimelineSegmentLegend
 import com.example.ui.screens.circuits.CircuitSelectorDialog
+import com.example.ui.theme.LocalBottomOverlayPadding
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
 
@@ -69,6 +70,7 @@ fun CalendarScreen(
     }
     var showCircuitPickerDialog by remember { mutableStateOf(false) }
 
+    val bottomOverlayPadding = LocalBottomOverlayPadding.current
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.TopCenter
@@ -77,7 +79,12 @@ fun CalendarScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 840.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 12.dp,
+                end = 16.dp,
+                bottom = 12.dp + bottomOverlayPadding
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item(key = "calendar_header") {

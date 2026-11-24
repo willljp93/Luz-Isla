@@ -77,6 +77,7 @@ import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
 import com.example.ui.components.CompactSearchBar
+import com.example.ui.theme.LocalBottomOverlayPadding
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
 
@@ -99,6 +100,8 @@ fun CircuitsScreen(
     var editingRelation by remember { mutableStateOf<Pair<Boolean, CircuitRelation?>?>(null) }
     var pendingDeleteCircuit by remember { mutableStateOf<Circuit?>(null) }
 
+    val bottomOverlayPadding = LocalBottomOverlayPadding.current
+
     LaunchedEffect(state.statusMessage) {
         val msg = state.statusMessage
         if (msg != null) {
@@ -108,7 +111,12 @@ fun CircuitsScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = bottomOverlayPadding)
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
@@ -123,7 +131,9 @@ fun CircuitsScreen(
                         }
                     }
                 },
-                modifier = Modifier.testTag("admin_add_fab")
+                modifier = Modifier
+                    .padding(bottom = bottomOverlayPadding)
+                    .testTag("admin_add_fab")
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "Agregar registro")
             }
@@ -140,7 +150,12 @@ fun CircuitsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .widthIn(max = 840.dp),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 12.dp,
+                    bottom = 88.dp + bottomOverlayPadding
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item(key = "admin_header") {
@@ -429,7 +444,7 @@ fun CircuitsScreen(
                                 val d = LocalDate.ofEpochDay(ex.dateEpochDay)
                                 AdminItemCard(
                                     title = "${ex.circuitCode} • ${ScheduleEngine.formatShortDate(d)}",
-                                    subtitle = "${ScheduleEngine.formatMinuteOfDay(ex.startMinuteOfDay, state.use24h)} – ${ScheduleEngine.formatMinuteOfDay(ex.endMinuteOfDay, state.use24h)} • ${if (ex.hasService) "Con servicio" else "Sin servicio"}",
+                                    subtitle = "${ScheduleEngine.formatMinuteOfDay(ex.startMinuteOfDay, state.use24h)}\u2060–\u2060${ScheduleEngine.formatMinuteOfDay(ex.endMinuteOfDay, state.use24h)} • ${if (ex.hasService) "Con servicio" else "Sin servicio"}",
                                     detail = ex.reason,
                                     onEdit = { editingException = false to ex },
                                     onDelete = { viewModel.deleteManualException(ex.id) }
@@ -707,7 +722,7 @@ private fun FixedRuleCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "${rule.circuitCode} • ${ScheduleEngine.formatMinuteOfDay(rule.startMinuteOfDay, use24h)} – ${ScheduleEngine.formatMinuteOfDay(rule.endMinuteOfDay, use24h)}",
+                    text = "${rule.circuitCode} • ${ScheduleEngine.formatMinuteOfDay(rule.startMinuteOfDay, use24h)}\u2060–\u2060${ScheduleEngine.formatMinuteOfDay(rule.endMinuteOfDay, use24h)}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )

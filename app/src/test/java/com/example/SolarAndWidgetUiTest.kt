@@ -1,5 +1,8 @@
 package com.example
 
+import com.example.data.preferences.UserPreferences
+import com.example.data.preferences.UserPreferencesRepository
+import com.example.domain.model.BottomBarBehavior
 import com.example.domain.model.ThemeMode
 import com.example.domain.model.WidgetCardStyle
 import com.example.widget.ResolvedWidgetSurface
@@ -94,5 +97,19 @@ class SolarAndWidgetUiTest {
             ResolvedWidgetSurface.LIGHT,
             WidgetUpdateHelper.resolveSurfaceStyle(WidgetCardStyle.SYSTEM, ThemeMode.SYSTEM, false)
         )
+    }
+
+    @Test
+    fun `preferences default to app-open sync, auto bottom bar, and normalize legacy intervals`() {
+        val defaults = UserPreferences()
+        assertEquals(0, defaults.syncIntervalHours)
+        assertEquals(BottomBarBehavior.AUTO, defaults.bottomBarBehavior)
+        assertTrue(defaults.checkAllOnAppOpen)
+
+        assertEquals(0, UserPreferencesRepository.normalizeSyncInterval(6))
+        assertEquals(0, UserPreferencesRepository.normalizeSyncInterval(12))
+        assertEquals(0, UserPreferencesRepository.normalizeSyncInterval(0))
+        assertEquals(1, UserPreferencesRepository.normalizeSyncInterval(1))
+        assertEquals(24, UserPreferencesRepository.normalizeSyncInterval(24))
     }
 }

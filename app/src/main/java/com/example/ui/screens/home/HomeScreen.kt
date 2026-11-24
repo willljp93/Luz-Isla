@@ -78,6 +78,7 @@ import com.example.ui.components.DayNightChip
 import com.example.ui.components.IslaEmblemBadge
 import com.example.ui.components.rememberHeroDayNightBrush
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalBottomOverlayPadding
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.Instant
 
@@ -125,6 +126,7 @@ fun HomeScreen(
         themeMode = state.themeMode
     )
 
+    val bottomOverlayPadding = LocalBottomOverlayPadding.current
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -135,7 +137,12 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 840.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 12.dp,
+                end = 16.dp,
+                bottom = 12.dp + bottomOverlayPadding
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item(key = "hero_banner") {
@@ -672,7 +679,7 @@ private fun RichCircuitCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val periodStr = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                    "Período: ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)} – ${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
+                    "Período: ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)}\u2060–\u2060${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
                 } else {
                     "Período: Sin datos"
                 }
@@ -758,7 +765,7 @@ private fun CompactCircuitRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 val sub = if (eval.currentIntervalStartMillis != null && eval.currentIntervalEndMillis != null) {
-                    "$statusShort • ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
+                    "$statusShort • ${ScheduleEngine.formatTime(eval.currentIntervalStartMillis, use24h, zoneId)}\u2060–\u2060${ScheduleEngine.formatTime(eval.currentIntervalEndMillis, use24h, zoneId)}"
                 } else {
                     statusShort
                 }

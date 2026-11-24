@@ -54,7 +54,7 @@ class ForecastSyncWorker(
 
         fun schedule(context: Context, enabled: Boolean, intervalHours: Int) {
             val wm = WorkManager.getInstance(context)
-            if (!enabled) {
+            if (!enabled || intervalHours <= 0) {
                 wm.cancelUniqueWork(WORK_NAME)
                 return
             }

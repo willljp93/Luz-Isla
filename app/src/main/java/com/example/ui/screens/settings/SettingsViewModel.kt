@@ -12,6 +12,7 @@ import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.ImportMergeMode
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.engine.ScheduleEngine
+import com.example.domain.model.BottomBarBehavior
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
@@ -26,6 +27,7 @@ import com.example.sync.ShareHelper
 import com.example.sync.SolarSyncOutcome
 import com.example.sync.SunriseSunsetService
 import com.example.sync.SyncOutcome
+import com.example.sync.UnifiedSyncCoordinator
 import com.example.sync.UpdateCheckResult
 import com.example.transfer.ConfigCodec
 import com.example.transfer.DecodedConfigResult
@@ -60,6 +62,7 @@ data class SettingsUiState(
     val isSyncing: Boolean = false,
     val isSolarSyncing: Boolean = false,
     val isCheckingUpdates: Boolean = false,
+    val isCheckingUnified: Boolean = false,
     val updateAvailable: Boolean = false,
     val distributionChannels: List<DistributionChannel> = AppUpdateService.defaultDistributionChannels(),
     val hasBackup: Boolean = false,
@@ -71,6 +74,13 @@ data class SettingsUiState(
     val feedbackMessage: String? = null
 )
 
+private data class SettingsSyncFlags(
+    val urlSync: Boolean,
+    val solarSync: Boolean,
+    val updateCheck: Boolean,
+    val unifiedCheck: Boolean
+)
+
 class SettingsViewModel(
     private val appContext: Context,
     private val repository: LuzIslaRepository,
@@ -80,6 +90,7 @@ class SettingsViewModel(
     private val isSyncing = MutableStateFlow(false)
     private val isSolarSyncing = MutableStateFlow(false)
     private val isCheckingUpdates = MutableStateFlow(false)
+    private val isCheckingUnified = MutableStateFlow(false)
     private val exportBundle = MutableStateFlow<ExportBundle?>(null)
     private val pendingImport = MutableStateFlow<PendingImportReview?>(null)
     private val feedbackMessage = MutableStateFlow<String?>(null)
@@ -87,6 +98,7 @@ class SettingsViewModel(
     private val syncManager = HttpsSyncManager(repository, prefsRepo)
     private val solarSyncService = SunriseSunsetService(prefsRepo)
     private val appUpdateService = AppUpdateService(prefsRepo)
+    private val unifiedSyncCoordinator = UnifiedSyncCoordinator(appContext, repository, prefsRepo)
 
     private val prefsAndBackupsFlow = combine(
         prefsRepo.preferencesFlow,
@@ -99,9 +111,10 @@ class SettingsViewModel(
     private val syncingStateFlow = combine(
         isSyncing,
         isSolarSyncing,
-        isCheckingUpdates
-    ) { urlSync, solarSync, updateCheck ->
-        Triple(urlSync, solarSync, updateCheck)
+        isCheckingUpdates,
+        isCheckingUnified
+    ) { urlSync, solarSync, updateCheck, unifiedCheck ->
+        SettingsSyncFlags(urlSync, solarSync, updateCheck, unifiedCheck)
     }
 
     val uiState: StateFlow<SettingsUiState> = combine(
@@ -130,9 +143,10 @@ class SettingsViewModel(
 
         SettingsUiState(
             prefs = prefs,
-            isSyncing = syncFlags.first,
-            isSolarSyncing = syncFlags.second,
-            isCheckingUpdates = syncFlags.third,
+            isSyncing = syncFlags.urlSync,
+            isSolarSyncing = syncFlags.solarSync,
+            isCheckingUpdates = syncFlags.updateCheck,
+            isCheckingUnified = syncFlags.unifiedCheck,
             updateAvailable = updateAvailable,
             distributionChannels = AppUpdateService.defaultDistributionChannels(),
             hasBackup = hasBackup,
@@ -249,6 +263,38 @@ class SettingsViewModel(
         }
     }
 
+    fun setBottomBarBehavior(behavior: BottomBarBehavior) {
+        viewModelScope.launch {
+            prefsRepo.setBottomBarBehavior(behavior)
+        }
+    }
+
+    fun setCheckAllOnAppOpen(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setCheckAllOnAppOpen(enabled)
+        }
+    }
+
+    fun runUnifiedSyncCheckNow() {
+        viewModelScope.launch {
+            isCheckingUnified.value = true
+            val report = try {
+                val prefs = prefsRepo.getSnapshot()
+                val zone = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+                unifiedSyncCoordinator.runChecks(zoneId = zone, isManualTrigger = true)
+            } finally {
+                isCheckingUnified.value = false
+            }
+            feedbackMessage.value = buildString {
+                append("Comprobación completada: ")
+                append("Sol (${report.solarStatus}) • App (${report.updateStatus})")
+                if (report.forecastUpdated) {
+                    append(" • Pronóstico actualizado")
+                }
+            }
+        }
+    }
+
     fun setDynamicLauncherIconEnabled(enabled: Boolean) {
         viewModelScope.launch {
             prefsRepo.setDynamicLauncherIconEnabled(enabled)
@@ -311,10 +357,15 @@ class SettingsViewModel(
             feedbackMessage.value = "La dirección de sincronización debe usar HTTPS."
             return
         }
+        val normalizedHours = UserPreferencesRepository.normalizeSyncInterval(intervalHours)
         viewModelScope.launch {
-            prefsRepo.setSyncConfig(trimmed, autoSync, intervalHours)
-            ForecastSyncWorker.schedule(appContext, autoSync && trimmed.isNotEmpty(), intervalHours)
-            feedbackMessage.value = "Configuración de sincronización guardada."
+            prefsRepo.setSyncConfig(trimmed, autoSync, normalizedHours)
+            ForecastSyncWorker.schedule(appContext, autoSync && trimmed.isNotEmpty(), normalizedHours)
+            feedbackMessage.value = if (autoSync && trimmed.isNotEmpty() && normalizedHours == 0) {
+                "Configuración guardada: sincronización automática al abrir la app."
+            } else {
+                "Configuración de sincronización guardada."
+            }
         }
     }
 

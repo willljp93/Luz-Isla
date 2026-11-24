@@ -43,6 +43,8 @@ val LocalElectricStatusColors = staticCompositionLocalOf {
     )
 }
 
+val LocalBottomOverlayPadding = staticCompositionLocalOf { 0.dp }
+
 private val LightColorScheme = lightColorScheme(
     primary = EmeraldPrimary,
     onPrimary = OnEmeraldPrimary,

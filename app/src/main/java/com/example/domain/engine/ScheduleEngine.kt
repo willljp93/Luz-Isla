@@ -44,7 +44,7 @@ object ScheduleEngine {
     val gmtOffsetOptions: List<String> = (-12..14).map { formatHourOffsetId(it) }
 
     val realTimezonePresets: List<TimezonePreset> = listOf(
-        TimezonePreset("Etc/GMT+12", "Línea Int. Oeste (Baker)", "Pacífico", -12),
+        TimezonePreset("GMT-12", "Línea Int. Oeste (Baker)", "Pacífico", -12),
         TimezonePreset("Pacific/Pago_Pago", "Pago Pago (Samoa Amer.)", "Oceanía", -11),
         TimezonePreset("Pacific/Honolulu", "Honolulu (Hawái)", "Oceanía", -10),
         TimezonePreset("America/Anchorage", "Anchorage (Alaska)", "Norteamérica", -9),
@@ -130,10 +130,18 @@ object ScheduleEngine {
         }
     }
 
+    fun isTechnicalOffsetZoneId(rawId: String): Boolean {
+        val id = rawId.trim()
+        return id.startsWith("Etc/", ignoreCase = true) ||
+            id.startsWith("SystemV/", ignoreCase = true) ||
+            GMT_OFFSET_REGEX.matches(id) ||
+            id.equals("Z", ignoreCase = true)
+    }
+
     fun presetLabelForZone(zoneId: ZoneId): String? {
         val id = zoneId.id
         return realTimezonePresets.firstOrNull { it.zoneId.equals(id, ignoreCase = true) }?.displayName
-            ?: id.substringAfter('/').replace('_', ' ').takeIf { id.contains('/') }
+            ?: id.substringAfter('/').replace('_', ' ').takeIf { id.contains('/') && !isTechnicalOffsetZoneId(id) }
     }
 
     fun formatZoneSummary(
@@ -150,7 +158,7 @@ object ScheduleEngine {
     ): String {
         val gmt = formatGmtOffset(zoneId, atInstant)
         val id = zoneId.id
-        return if (id.contains('/') || id.equals("UTC", ignoreCase = true)) {
+        return if ((id.contains('/') && !isTechnicalOffsetZoneId(id)) || id.equals("UTC", ignoreCase = true)) {
             "$id ($gmt)"
         } else {
             gmt
@@ -740,6 +748,11 @@ object ScheduleEngine {
         DayOfWeek.SUNDAY -> 6
     }
 
+    private val unicodeSpaceRegex = Regex("[\\s\\u00A0\\u202F]+")
+    private val amPmSpacingRegex = Regex(
+        "[\\s\\u00A0\\u202F]+(a\\.?[\\s\\u00A0\\u202F]*m\\.?|p\\.?[\\s\\u00A0\\u202F]*m\\.?)",
+        RegexOption.IGNORE_CASE
+    )
     private val time12Formatter = DateTimeFormatter.ofPattern("hh:mm a", Locale("es", "CU"))
     private val time24Formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
     private val dateFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, yyyy", Locale("es", "CU"))
@@ -747,18 +760,25 @@ object ScheduleEngine {
     private val dateTime12Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", Locale("es", "CU"))
     private val dateTime24Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.US)
 
+    fun keepAmPmTogether(formatted: String): String =
+        amPmSpacingRegex.replace(formatted) { match ->
+            "\u00A0" + match.groupValues[1].replace(unicodeSpaceRegex, "\u00A0")
+        }
+
     fun formatTime(epochMillis: Long, use24h: Boolean, zoneId: ZoneId = HAVANA_ZONE): String =
         if (use24h) formatTime24h(epochMillis, zoneId) else formatTime12h(epochMillis, zoneId)
 
     fun formatTime12h(epochMillis: Long, zoneId: ZoneId = HAVANA_ZONE): String =
-        Instant.ofEpochMilli(epochMillis).atZone(zoneId).format(time12Formatter)
+        keepAmPmTogether(Instant.ofEpochMilli(epochMillis).atZone(zoneId).format(time12Formatter))
 
     fun formatTime24h(epochMillis: Long, zoneId: ZoneId = HAVANA_ZONE): String =
         Instant.ofEpochMilli(epochMillis).atZone(zoneId).format(time24Formatter)
 
-    fun formatDateTimeReadable(epochMillis: Long, use24h: Boolean, zoneId: ZoneId = HAVANA_ZONE): String =
-        Instant.ofEpochMilli(epochMillis).atZone(zoneId)
+    fun formatDateTimeReadable(epochMillis: Long, use24h: Boolean, zoneId: ZoneId = HAVANA_ZONE): String {
+        val raw = Instant.ofEpochMilli(epochMillis).atZone(zoneId)
             .format(if (use24h) dateTime24Formatter else dateTime12Formatter)
+        return if (use24h) raw else keepAmPmTogether(raw)
+    }
 
     fun formatDateEs(date: LocalDate): String =
         date.format(dateFormatter).replaceFirstChar { it.uppercase() }
@@ -771,7 +791,7 @@ object ScheduleEngine {
     fun formatMinuteOfDay12h(minuteOfDay: Int): String {
         val norm = ((minuteOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
         val t = LocalTime.of(norm / 60, norm % 60)
-        return t.format(time12Formatter)
+        return keepAmPmTogether(t.format(time12Formatter))
     }
 
     fun formatMinuteOfDay24h(minuteOfDay: Int): String {

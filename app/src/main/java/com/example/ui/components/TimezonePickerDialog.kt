@@ -140,7 +140,7 @@ fun TimezonePickerDialog(
             val extraIds = ZoneId.getAvailableZoneIds()
                 .asSequence()
                 .filter { id ->
-                    id !in existingIds && !id.startsWith("SystemV/") && (
+                    id !in existingIds && !ScheduleEngine.isTechnicalOffsetZoneId(id) && (
                         id.contains(q, ignoreCase = true) ||
                             ScheduleEngine.formatGmtOffset(ZoneId.of(id), nowInstant).contains(q, ignoreCase = true)
                         )
@@ -205,7 +205,7 @@ fun TimezonePickerDialog(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = "Dispositivo: ${systemZone.id} ($systemGmtLabel)",
+                                    text = "Dispositivo: ${ScheduleEngine.formatZoneSummary(systemZone, nowInstant)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,

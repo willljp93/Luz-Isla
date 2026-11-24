@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.domain.model.BottomBarBehavior
 import com.example.domain.model.ThemeMode
 import com.example.domain.model.WidgetCardStyle
 import com.example.domain.version.AppVersionConfig
@@ -42,6 +43,7 @@ data class UserPreferences(
     val solarLastStatus: String = "Valores locales predeterminados (Nueva Gerona)",
     val enableElectricAnimations: Boolean = true,
     val dynamicLauncherIconEnabled: Boolean = false,
+    val bottomBarBehavior: BottomBarBehavior = BottomBarBehavior.AUTO,
     val activeConfigVersion: Int = AppVersionConfig.APP_VERSION_CODE,
     val activeConfigVersionName: String = AppVersionConfig.APP_VERSION_NAME,
     val activeConfigTimestampMillis: Long = 0L,
@@ -50,12 +52,17 @@ data class UserPreferences(
     val lastExportDayBuild: Int = 0,
     val syncUrl: String = "",
     val autoSyncEnabled: Boolean = false,
-    val syncIntervalHours: Int = 6,
+    val syncIntervalHours: Int = 0,
     val lastSyncEpochMillis: Long = 0L,
     val lastForecastUpdateEpochMillis: Long = 0L,
     val lastRemoteConfigVersion: Int = 0,
     val lastRemoteConfigVersionName: String = "",
     val lastSyncStatus: String = "Sin sincronización remota configurada",
+    val checkAllOnAppOpen: Boolean = true,
+    val lastUnifiedCheckEpochMillis: Long = 0L,
+    val lastUnifiedJsonStatus: String = "Pendiente",
+    val lastUnifiedSolarStatus: String = "Pendiente",
+    val lastUnifiedUpdateStatus: String = "Pendiente",
     val notifyServiceStart: Boolean = true,
     val notifyServiceEnd: Boolean = true,
     val notifyNextRestore: Boolean = false,
@@ -102,6 +109,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val SOLAR_LAST_STATUS = stringPreferencesKey("solar_last_status")
         val ENABLE_ELECTRIC_ANIMATIONS = booleanPreferencesKey("enable_electric_animations")
         val DYNAMIC_LAUNCHER_ICON = booleanPreferencesKey("dynamic_launcher_icon")
+        val BOTTOM_BAR_BEHAVIOR = stringPreferencesKey("bottom_bar_behavior")
         val ACTIVE_CONFIG_VERSION = intPreferencesKey("active_config_version")
         val ACTIVE_CONFIG_VERSION_NAME = stringPreferencesKey("active_config_version_name")
         val ACTIVE_CONFIG_TIMESTAMP = longPreferencesKey("active_config_timestamp")
@@ -116,6 +124,11 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val LAST_REMOTE_VERSION = intPreferencesKey("last_remote_version")
         val LAST_REMOTE_VERSION_NAME = stringPreferencesKey("last_remote_version_name")
         val LAST_SYNC_STATUS = stringPreferencesKey("last_sync_status")
+        val CHECK_ALL_ON_APP_OPEN = booleanPreferencesKey("check_all_on_app_open")
+        val LAST_UNIFIED_CHECK_MILLIS = longPreferencesKey("last_unified_check_millis")
+        val LAST_UNIFIED_JSON_STATUS = stringPreferencesKey("last_unified_json_status")
+        val LAST_UNIFIED_SOLAR_STATUS = stringPreferencesKey("last_unified_solar_status")
+        val LAST_UNIFIED_UPDATE_STATUS = stringPreferencesKey("last_unified_update_status")
         val NOTIFY_SERVICE_START = booleanPreferencesKey("notify_service_start")
         val NOTIFY_SERVICE_END = booleanPreferencesKey("notify_service_end")
         val NOTIFY_NEXT_RESTORE = booleanPreferencesKey("notify_next_restore")
@@ -191,6 +204,9 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             solarLastStatus = prefs[Keys.SOLAR_LAST_STATUS] ?: "Valores locales predeterminados (Nueva Gerona)",
             enableElectricAnimations = prefs[Keys.ENABLE_ELECTRIC_ANIMATIONS] ?: true,
             dynamicLauncherIconEnabled = prefs[Keys.DYNAMIC_LAUNCHER_ICON] ?: false,
+            bottomBarBehavior = runCatching {
+                BottomBarBehavior.valueOf(prefs[Keys.BOTTOM_BAR_BEHAVIOR] ?: BottomBarBehavior.AUTO.name)
+            }.getOrDefault(BottomBarBehavior.AUTO),
             activeConfigVersion = activeNum,
             activeConfigVersionName = activeName,
             activeConfigTimestampMillis = activeTs,
@@ -199,12 +215,17 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             lastExportDayBuild = prefs[Keys.LAST_EXPORT_DAY_BUILD] ?: 0,
             syncUrl = prefs[Keys.SYNC_URL].orEmpty(),
             autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: false,
-            syncIntervalHours = prefs[Keys.SYNC_INTERVAL_HOURS] ?: 6,
+            syncIntervalHours = normalizeSyncInterval(prefs[Keys.SYNC_INTERVAL_HOURS] ?: 0),
             lastSyncEpochMillis = prefs[Keys.LAST_SYNC_MILLIS] ?: 0L,
             lastForecastUpdateEpochMillis = prefs[Keys.LAST_FORECAST_UPDATE_MILLIS] ?: 0L,
             lastRemoteConfigVersion = prefs[Keys.LAST_REMOTE_VERSION] ?: 0,
             lastRemoteConfigVersionName = prefs[Keys.LAST_REMOTE_VERSION_NAME].orEmpty(),
             lastSyncStatus = prefs[Keys.LAST_SYNC_STATUS] ?: "Sin sincronización remota configurada",
+            checkAllOnAppOpen = prefs[Keys.CHECK_ALL_ON_APP_OPEN] ?: true,
+            lastUnifiedCheckEpochMillis = prefs[Keys.LAST_UNIFIED_CHECK_MILLIS] ?: 0L,
+            lastUnifiedJsonStatus = prefs[Keys.LAST_UNIFIED_JSON_STATUS] ?: "Pendiente",
+            lastUnifiedSolarStatus = prefs[Keys.LAST_UNIFIED_SOLAR_STATUS] ?: "Pendiente",
+            lastUnifiedUpdateStatus = prefs[Keys.LAST_UNIFIED_UPDATE_STATUS] ?: "Pendiente",
             notifyServiceStart = prefs[Keys.NOTIFY_SERVICE_START] ?: true,
             notifyServiceEnd = prefs[Keys.NOTIFY_SERVICE_END] ?: true,
             notifyNextRestore = prefs[Keys.NOTIFY_NEXT_RESTORE] ?: false,
@@ -373,6 +394,28 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[Keys.DYNAMIC_LAUNCHER_ICON] = enabled }
     }
 
+    suspend fun setBottomBarBehavior(behavior: BottomBarBehavior) {
+        dataStore.edit { it[Keys.BOTTOM_BAR_BEHAVIOR] = behavior.name }
+    }
+
+    suspend fun setCheckAllOnAppOpen(enabled: Boolean) {
+        dataStore.edit { it[Keys.CHECK_ALL_ON_APP_OPEN] = enabled }
+    }
+
+    suspend fun recordUnifiedCheckSummary(
+        timestampMillis: Long,
+        jsonStatus: String,
+        solarStatus: String,
+        updateStatus: String
+    ) {
+        dataStore.edit {
+            it[Keys.LAST_UNIFIED_CHECK_MILLIS] = timestampMillis
+            it[Keys.LAST_UNIFIED_JSON_STATUS] = jsonStatus
+            it[Keys.LAST_UNIFIED_SOLAR_STATUS] = solarStatus
+            it[Keys.LAST_UNIFIED_UPDATE_STATUS] = updateStatus
+        }
+    }
+
     suspend fun recordActiveConfigMetadata(
         version: Int,
         timestampMillis: Long,
@@ -413,7 +456,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit {
             it[Keys.SYNC_URL] = url.trim()
             it[Keys.AUTO_SYNC_ENABLED] = autoSync
-            it[Keys.SYNC_INTERVAL_HOURS] = intervalHours.coerceIn(1, 24)
+            it[Keys.SYNC_INTERVAL_HOURS] = normalizeSyncInterval(intervalHours)
         }
     }
 
@@ -514,6 +557,14 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
                 appWidgetIds.forEach { remove(it) }
             }
             prefs[Keys.WIDGET_STYLE_MAP] = json.encodeToString(updatedStyles)
+        }
+    }
+
+    companion object {
+        fun normalizeSyncInterval(hours: Int): Int = when (hours) {
+            1 -> 1
+            24 -> 24
+            else -> 0
         }
     }
 }
