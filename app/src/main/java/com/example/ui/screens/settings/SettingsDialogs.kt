@@ -3,6 +3,7 @@ package com.example.ui.screens.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +42,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.repository.ImportMergeMode
 import com.example.domain.engine.ScheduleEngine
@@ -62,7 +64,7 @@ fun ExportConfigDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Exportación generada (v${bundle.configVersion})") },
+        title = { Text("Exportación generada (v${bundle.configVersionName})") },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -97,26 +99,29 @@ fun ExportConfigDialog(
                 ) {
                     OutlinedButton(
                         onClick = { onCopyCode(bundle.alphanumericCode) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Copiar")
+                        Text("Copiar", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                     OutlinedButton(
                         onClick = { onShareCode(bundle.alphanumericCode) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Compartir")
+                        Text("Compartir", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Button(
-                    onClick = { onSaveJson("luz_isla_config_v${bundle.configVersion}.json") },
+                    onClick = { onSaveJson("luz_isla_config_${bundle.configVersionName}.json") },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Guardar como archivo JSON")
+                    Text("Guardar archivo JSON", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             }
         },
@@ -147,7 +152,7 @@ fun ImportReviewDialog(
         title = { Text("Resumen de importación") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Origen: ${s.sourceName} (v${s.configVersion})", fontWeight = FontWeight.Bold)
+                Text("Origen: ${s.sourceName} (v${s.displayVersion})", fontWeight = FontWeight.Bold)
                 if (generatedReadable != null) {
                     Text(
                         text = "Fecha de exportación: $generatedReadable",
@@ -383,13 +388,19 @@ fun DayNightTimeDialog(
                         onSaveManual(sunrise, sunset)
                     }
                 },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 modifier = Modifier.testTag("solar_dialog_confirm_button")
             ) {
-                Text(if (autoSelected) "Usar Automático" else "Guardar Manual")
+                Text(
+                    text = if (autoSelected) "Usar Automático" else "Guardar Manual",
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(onClick = onDismiss) { Text("Cancelar", maxLines = 1, softWrap = false) }
         }
     )
 }

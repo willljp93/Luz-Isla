@@ -19,9 +19,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 object ScheduleEngine {
 
@@ -30,9 +32,175 @@ object ScheduleEngine {
     private const val MINUTES_PER_DAY = 1440
     private const val LOOKAHEAD_DAYS = 14L
 
+    private val GMT_OFFSET_REGEX = Regex("^(?:GMT|UTC)?\\s*([+-]?\\d{1,2})(?::(\\d{2}))?$", RegexOption.IGNORE_CASE)
+
+    data class TimezonePreset(
+        val zoneId: String,
+        val displayName: String,
+        val regionLabel: String,
+        val standardOffsetHours: Int
+    )
+
+    val gmtOffsetOptions: List<String> = (-12..14).map { formatHourOffsetId(it) }
+
+    val realTimezonePresets: List<TimezonePreset> = listOf(
+        TimezonePreset("Etc/GMT+12", "Línea Int. Oeste (Baker)", "Pacífico", -12),
+        TimezonePreset("Pacific/Pago_Pago", "Pago Pago (Samoa Amer.)", "Oceanía", -11),
+        TimezonePreset("Pacific/Honolulu", "Honolulu (Hawái)", "Oceanía", -10),
+        TimezonePreset("America/Anchorage", "Anchorage (Alaska)", "Norteamérica", -9),
+        TimezonePreset("America/Los_Angeles", "Los Ángeles / Tijuana", "Norteamérica", -8),
+        TimezonePreset("America/Denver", "Denver / Chihuahua", "Norteamérica", -7),
+        TimezonePreset("America/Mexico_City", "Ciudad de México / Centroamérica", "América", -6),
+        TimezonePreset("America/Havana", "La Habana / Nueva Gerona (Cuba)", "Caribe", -5),
+        TimezonePreset("America/New_York", "Nueva York / Miami", "Norteamérica", -5),
+        TimezonePreset("America/Bogota", "Bogotá / Lima / Panamá", "Sudamérica", -5),
+        TimezonePreset("America/Santo_Domingo", "Santo Domingo / San Juan", "Caribe", -4),
+        TimezonePreset("America/Caracas", "Caracas (Venezuela)", "Sudamérica", -4),
+        TimezonePreset("America/Santiago", "Santiago (Chile)", "Sudamérica", -4),
+        TimezonePreset("America/Argentina/Buenos_Aires", "Buenos Aires / Montevideo", "Sudamérica", -3),
+        TimezonePreset("America/Sao_Paulo", "São Paulo / Brasilia", "Sudamérica", -3),
+        TimezonePreset("Atlantic/South_Georgia", "Atlántico Sur (Georgias)", "Atlántico", -2),
+        TimezonePreset("Atlantic/Azores", "Azores / Cabo Verde", "Atlántico", -1),
+        TimezonePreset("Europe/London", "Londres / Lisboa", "Europa", 0),
+        TimezonePreset("UTC", "Tiempo Universal (UTC)", "Estándar", 0),
+        TimezonePreset("Europe/Madrid", "Madrid / París / Roma / Berlín", "Europa", 1),
+        TimezonePreset("Europe/Athens", "Atenas / El Cairo / Johannesburgo", "Europa/África", 2),
+        TimezonePreset("Europe/Moscow", "Moscú / Estambul / Riad", "Europa/Asia", 3),
+        TimezonePreset("Asia/Dubai", "Dubái / Bakú", "Asia", 4),
+        TimezonePreset("Asia/Karachi", "Karachi / Taskent", "Asia", 5),
+        TimezonePreset("Asia/Dhaka", "Daca / Almaty", "Asia", 6),
+        TimezonePreset("Asia/Bangkok", "Bangkok / Yakarta", "Asia", 7),
+        TimezonePreset("Asia/Shanghai", "Pekín / Singapur / Manila", "Asia", 8),
+        TimezonePreset("Asia/Tokyo", "Tokio / Seúl", "Asia", 9),
+        TimezonePreset("Australia/Sydney", "Sídney / Guam", "Oceanía", 10),
+        TimezonePreset("Pacific/Noumea", "Numea / Islas Salomón", "Oceanía", 11),
+        TimezonePreset("Pacific/Auckland", "Auckland / Fiyi", "Oceanía", 12),
+        TimezonePreset("Pacific/Tongatapu", "Nukualofa (Tonga)", "Oceanía", 13),
+        TimezonePreset("Pacific/Kiritimati", "Kiritimati (Islas de la Línea)", "Oceanía", 14)
+    )
+
+    fun formatHourOffsetId(hour: Int): String = if (hour >= 0) "GMT+$hour" else "GMT$hour"
+
+    fun parseGmtOffsetHours(raw: String): Int? {
+        val match = GMT_OFFSET_REGEX.matchEntire(raw.trim()) ?: return null
+        val h = match.groupValues[1].toIntOrNull() ?: return null
+        return h.takeIf { it in -12..14 }
+    }
+
+    fun representativePresetForOffset(
+        offsetHours: Int,
+        atInstant: Instant = Instant.now()
+    ): TimezonePreset {
+        val targetSeconds = offsetHours * 3600
+        // 1. Prefer America/Havana when its current offset matches
+        val havana = realTimezonePresets.first { it.zoneId == HAVANA_ZONE.id }
+        val havanaOffset = runCatching { HAVANA_ZONE.rules.getOffset(atInstant).totalSeconds }.getOrNull()
+        if (havanaOffset == targetSeconds) return havana
+
+        // 2. Match a preset whose live offset at `atInstant` equals targetSeconds
+        val liveMatch = realTimezonePresets.firstOrNull { preset ->
+            val z = runCatching { ZoneId.of(preset.zoneId) }.getOrNull() ?: return@firstOrNull false
+            runCatching { z.rules.getOffset(atInstant).totalSeconds }.getOrNull() == targetSeconds
+        }
+        if (liveMatch != null) return liveMatch
+
+        // 3. Fallback to standard offset catalog or fixed GMT
+        return realTimezonePresets.firstOrNull { it.standardOffsetHours == offsetHours }
+            ?: TimezonePreset(
+                zoneId = formatHourOffsetId(offsetHours),
+                displayName = "Huso fijo ${formatHourOffsetId(offsetHours)}",
+                regionLabel = "Estándar",
+                standardOffsetHours = offsetHours
+            )
+    }
+
+    fun representativeZoneIdForOffset(
+        offsetHours: Int,
+        atInstant: Instant = Instant.now()
+    ): String {
+        val targetSeconds = offsetHours * 3600
+        val preset = representativePresetForOffset(offsetHours, atInstant)
+        val liveSeconds = runCatching {
+            ZoneId.of(preset.zoneId).rules.getOffset(atInstant).totalSeconds
+        }.getOrNull()
+        return if (liveSeconds == targetSeconds) {
+            preset.zoneId
+        } else {
+            formatHourOffsetId(offsetHours)
+        }
+    }
+
+    fun presetLabelForZone(zoneId: ZoneId): String? {
+        val id = zoneId.id
+        return realTimezonePresets.firstOrNull { it.zoneId.equals(id, ignoreCase = true) }?.displayName
+            ?: id.substringAfter('/').replace('_', ' ').takeIf { id.contains('/') }
+    }
+
+    fun formatZoneSummary(
+        rawZoneId: String,
+        atInstant: Instant = Instant.now()
+    ): String {
+        val zone = parseManualZoneId(rawZoneId)
+        return formatZoneSummary(zone, atInstant)
+    }
+
+    fun formatZoneSummary(
+        zoneId: ZoneId,
+        atInstant: Instant = Instant.now()
+    ): String {
+        val gmt = formatGmtOffset(zoneId, atInstant)
+        val id = zoneId.id
+        return if (id.contains('/') || id.equals("UTC", ignoreCase = true)) {
+            "$id ($gmt)"
+        } else {
+            gmt
+        }
+    }
+
+    fun isSameInstantOffset(
+        first: ZoneId,
+        second: ZoneId,
+        atInstant: Instant = Instant.now()
+    ): Boolean {
+        val a = runCatching { first.rules.getOffset(atInstant).totalSeconds }.getOrNull()
+        val b = runCatching { second.rules.getOffset(atInstant).totalSeconds }.getOrNull()
+        return a != null && a == b
+    }
+
+    fun parseManualZoneId(raw: String): ZoneId {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return HAVANA_ZONE
+        val match = GMT_OFFSET_REGEX.matchEntire(trimmed)
+        if (match != null) {
+            val hours = match.groupValues[1].toIntOrNull()
+            val mins = match.groupValues[2].takeIf { it.isNotEmpty() }?.toIntOrNull() ?: 0
+            if (hours != null && hours in -18..18 && mins in 0..59) {
+                val signedMins = if (hours < 0) -mins else mins
+                return runCatching {
+                    ZoneId.ofOffset("GMT", ZoneOffset.ofHoursMinutes(hours, signedMins))
+                }.getOrDefault(HAVANA_ZONE)
+            }
+        }
+        return runCatching { ZoneId.of(trimmed) }.getOrDefault(HAVANA_ZONE)
+    }
+
+    fun formatGmtOffset(zoneId: ZoneId, atInstant: Instant = Instant.now()): String {
+        val totalSeconds = runCatching { zoneId.rules.getOffset(atInstant).totalSeconds }.getOrDefault(0)
+        if (totalSeconds == 0) return "GMT+0"
+        val sign = if (totalSeconds >= 0) "+" else "-"
+        val absSeconds = abs(totalSeconds)
+        val hours = absSeconds / 3600
+        val mins = (absSeconds % 3600) / 60
+        return if (mins == 0) {
+            "GMT$sign$hours"
+        } else {
+            String.format(Locale.US, "GMT%s%d:%02d", sign, hours, mins)
+        }
+    }
+
     fun effectiveZone(useSystemTimezone: Boolean, manualTimezoneId: String): ZoneId {
         if (useSystemTimezone) return ZoneId.systemDefault()
-        return runCatching { ZoneId.of(manualTimezoneId.trim()) }.getOrDefault(HAVANA_ZONE)
+        return parseManualZoneId(manualTimezoneId)
     }
 
     fun isDaytime(

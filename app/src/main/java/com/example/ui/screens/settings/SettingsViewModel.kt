@@ -15,6 +15,7 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
+import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.DistributionChannel
@@ -44,7 +45,8 @@ data class ExportBundle(
     val alphanumericCode: String,
     val jsonText: String,
     val generatedAtMillis: Long,
-    val configVersion: Int
+    val configVersion: Int,
+    val configVersionName: String
 )
 
 data class PendingImportReview(
@@ -331,13 +333,23 @@ class SettingsViewModel(
 
     fun generateExport(includePersonalData: Boolean) {
         viewModelScope.launch {
+            val prefs = prefsRepo.getSnapshot()
+            val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
+            val nowMillis = System.currentTimeMillis()
+            val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+            val (exportVersionName, nextDayBuild) = AppVersionConfig.nextDailyExportVersion(
+                today = today,
+                lastExportIsoDate = prefs.lastExportIsoDate,
+                lastExportDayBuild = prefs.lastExportDayBuild
+            )
+            val compactCode = AppVersionConfig.encodeCompactVersionCode(today, nextDayBuild)
+
             val bundle = withContext(Dispatchers.Default) {
                 val snapshot = repository.getCurrentSnapshot()
-                val version = uiState.value.prefs.activeConfigVersion.coerceAtLeast(1)
-                val nowMillis = System.currentTimeMillis()
                 val payload = ConfigCodec.snapshotToPayload(
                     snapshot = snapshot,
-                    configVersion = version,
+                    configVersion = compactCode,
+                    configVersionName = exportVersionName,
                     includePersonalData = includePersonalData,
                     nowIso = Instant.ofEpochMilli(nowMillis).toString()
                 )
@@ -347,9 +359,17 @@ class SettingsViewModel(
                     alphanumericCode = code,
                     jsonText = jsonText,
                     generatedAtMillis = nowMillis,
-                    configVersion = version
+                    configVersion = compactCode,
+                    configVersionName = exportVersionName
                 )
             }
+            prefsRepo.recordDailyExport(
+                isoDate = today.toString(),
+                dayBuild = nextDayBuild,
+                versionCode = compactCode,
+                versionName = exportVersionName,
+                timestampMillis = nowMillis
+            )
             exportBundle.value = bundle
         }
     }
@@ -413,10 +433,12 @@ class SettingsViewModel(
     fun confirmPendingImport(mode: ImportMergeMode, includePersonalFromIncoming: Boolean) {
         val review = pendingImport.value ?: return
         viewModelScope.launch {
+            val prefs = prefsRepo.getSnapshot()
             val currentSnapshot = repository.getCurrentSnapshot()
             val backupPayload = ConfigCodec.snapshotToPayload(
                 snapshot = currentSnapshot,
-                configVersion = uiState.value.prefs.activeConfigVersion.coerceAtLeast(1),
+                configVersion = prefs.activeConfigVersion.coerceAtLeast(1),
+                configVersionName = prefs.activeConfigVersionName,
                 includePersonalData = true,
                 sourceName = "Respaldo previo a importación"
             )
@@ -432,16 +454,18 @@ class SettingsViewModel(
             )
             val importedTs = ConfigCodec.parseGeneratedAtMillis(review.summary.generatedAtIso)
                 ?: System.currentTimeMillis()
+            val importedVersionLabel = review.summary.displayVersion
             prefsRepo.recordActiveConfigMetadata(
                 version = review.summary.configVersion,
                 timestampMillis = importedTs,
-                source = "Importado (${review.summary.sourceName})"
+                source = "Importado (${review.summary.sourceName})",
+                versionName = importedVersionLabel
             )
 
             ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
             WidgetUpdateHelper.refreshAllWidgets(appContext)
             pendingImport.value = null
-            feedbackMessage.value = "Configuración v${review.summary.configVersion} importada (${review.summary.circuitCount} circuitos)."
+            feedbackMessage.value = "Configuración v$importedVersionLabel importada (${review.summary.circuitCount} circuitos)."
         }
     }
 
@@ -465,14 +489,16 @@ class SettingsViewModel(
                 )
                 val restoredTs = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso)
                     ?: backup.createdAtMillis
+                val restoredLabel = decoded.payload.displayVersion(restoredTs)
                 prefsRepo.recordActiveConfigMetadata(
                     version = decoded.payload.configVersion,
                     timestampMillis = restoredTs,
-                    source = "Respaldo restaurado"
+                    source = "Respaldo restaurado",
+                    versionName = restoredLabel
                 )
                 ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
                 WidgetUpdateHelper.refreshAllWidgets(appContext)
-                feedbackMessage.value = "Respaldo restaurado (${backup.reason})."
+                feedbackMessage.value = "Respaldo v$restoredLabel restaurado (${backup.reason})."
             } catch (e: Exception) {
                 feedbackMessage.value = "No se pudo restaurar el respaldo: ${e.message}"
             }

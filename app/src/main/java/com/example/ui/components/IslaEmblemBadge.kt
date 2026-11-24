@@ -51,7 +51,7 @@ fun IslaEmblemBadge(
         )
         ScheduledState.UNKNOWN, null -> Triple(
             R.drawable.luz_isla_base,
-            Color(0xFFFAD601),
+            Color(0xFF60A5FA),
             "Emblema Luz Isla"
         )
     }
@@ -74,8 +74,8 @@ fun IslaEmblemBadge(
 
     Surface(
         shape = CircleShape,
-        color = Color(0xFF0C5075),
-        border = BorderStroke(2.dp, ringColor.copy(alpha = 0.85f)),
+        color = Color(0xFF0E283D),
+        border = BorderStroke(1.8.dp, ringColor.copy(alpha = 0.85f)),
         shadowElevation = 3.dp,
         modifier = modifier
             .size(size)
@@ -89,8 +89,8 @@ fun IslaEmblemBadge(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(Color(0xFF0C5075))
-                .padding(2.dp)
+                .background(Color(0xFF0E283D))
+                .padding(1.5.dp)
         ) {
             Image(
                 painter = painterResource(id = drawableRes),

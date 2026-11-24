@@ -36,13 +36,22 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           fi
 
-      - name: Extract App Version from Gradle
+      - name: Extract App Version from version.properties / Gradle
         id: app_version
         run: |
-          VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
-          VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)
+          if [ -f version.properties ]; then
+            V_YEAR=$(sed -n 's/^APP_VERSION_YEAR=//p' version.properties | tr -d '[:space:]')
+            V_MONTH=$(sed -n 's/^APP_VERSION_MONTH=//p' version.properties | tr -d '[:space:]')
+            V_DAY=$(sed -n 's/^APP_VERSION_DAY=//p' version.properties | tr -d '[:space:]')
+            V_BUILD=$(sed -n 's/^APP_VERSION_BUILD=//p' version.properties | tr -d '[:space:]')
+            VERSION_NAME=$(printf "%d.%02d.%02d.%d" "$V_YEAR" "$((10#$V_MONTH))" "$((10#$V_DAY))" "$((10#$V_BUILD))")
+            VERSION_CODE=$(( (V_YEAR % 100) * 1000000 + (10#$V_MONTH) * 10000 + (10#$V_DAY) * 100 + (10#$V_BUILD) ))
+          else
+            VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+            VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)
+          fi
           if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
-            echo "Could not extract versionName or versionCode from app/build.gradle.kts"
+            echo "Could not extract versionName or versionCode"
             exit 1
           fi
           if [ "${{ github.ref_type }}" = "tag" ]; then

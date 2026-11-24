@@ -5,12 +5,14 @@ import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduleType
+import com.example.domain.version.AppVersionConfig
 import com.example.transfer.ConfigCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class TransferCodecTest {
 
@@ -123,7 +125,8 @@ class TransferCodecTest {
         )
         val payload = ConfigCodec.snapshotToPayload(
             snapshot = snapshot,
-            configVersion = 7,
+            configVersion = 26112301,
+            configVersionName = "2026.11.23.1",
             includePersonalData = true,
             sourceName = "Exportación Local",
             nowIso = "2026-11-22T18:00:00Z"
@@ -133,9 +136,33 @@ class TransferCodecTest {
         val summary = ConfigCodec.buildSummary(decoded)
 
         assertTrue(decoded.sha256Verified)
-        assertEquals(7, summary.configVersion)
+        assertEquals(26112301, summary.configVersion)
+        assertEquals("2026.11.23.1", summary.configVersionName)
+        assertEquals("2026.11.23.1", summary.displayVersion)
         assertEquals(40, summary.circuitCount)
         assertEquals(1, summary.cycleCount)
         assertNotNull(ConfigCodec.parseGeneratedAtMillis(summary.generatedAtIso))
     }
+
+    @Test
+    fun `AppVersionConfig computes YYYY_MM_DD_N daily exports and build codes accurately`() {
+        val nov23 = LocalDate.of(2026, 11, 23)
+        val nov24 = LocalDate.of(2026, 11, 24)
+
+        val (firstName, firstBuild) = AppVersionConfig.nextDailyExportVersion(nov23, "", 0)
+        assertEquals("2026.11.23.1", firstName)
+        assertEquals(1, firstBuild)
+        assertEquals(26112301, AppVersionConfig.encodeCompactVersionCode(nov23, firstBuild))
+
+        val (secondName, secondBuild) = AppVersionConfig.nextDailyExportVersion(nov23, "2026-11-23", firstBuild)
+        assertEquals("2026.11.23.2", secondName)
+        assertEquals(2, secondBuild)
+        assertEquals(26112302, AppVersionConfig.encodeCompactVersionCode(nov23, secondBuild))
+
+        val (nextDayName, nextDayBuild) = AppVersionConfig.nextDailyExportVersion(nov24, "2026-11-23", secondBuild)
+        assertEquals("2026.11.24.1", nextDayName)
+        assertEquals(1, nextDayBuild)
+        assertEquals("2026.11.24.1", AppVersionConfig.formatConfigVersionDisplay(26112401))
+    }
 }
+

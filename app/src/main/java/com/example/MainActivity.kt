@@ -5,17 +5,30 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -32,14 +45,22 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -207,6 +228,7 @@ private fun LuzIslaApp(
 
     val configuration = LocalConfiguration.current
     val useNavRail = configuration.screenWidthDp >= 600
+    var isBottomBarVisible by rememberSaveable { mutableStateOf(true) }
 
     fun navigateToTab(route: Any) {
         navController.navigate(route) {
@@ -222,30 +244,105 @@ private fun LuzIslaApp(
         contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = {
             if (!useNavRail) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        val selected = currentDestination?.hasRoute(tab.route::class) == true
-                        val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { navigateToTab(tab.route) },
-                            icon = {
-                                BadgedBox(
-                                    badge = {
-                                        if (showUpdateDot) {
-                                            Badge()
-                                        }
-                                    }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    AnimatedVisibility(
+                        visible = isBottomBarVisible,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                tonalElevation = 3.dp,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                                    .clickable { isBottomBarVisible = false }
+                                    .testTag("bottom_bar_hide_button")
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 2.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        contentDescription = tab.label
+                                        imageVector = Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Ocultar menú inferior",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                            },
-                            label = { Text(tab.label) },
-                            modifier = Modifier.testTag(tab.testTag)
-                        )
+                            }
+                            NavigationBar {
+                                tabs.forEach { tab ->
+                                    val selected = currentDestination?.hasRoute(tab.route::class) == true
+                                    val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
+                                    NavigationBarItem(
+                                        selected = selected,
+                                        onClick = { navigateToTab(tab.route) },
+                                        icon = {
+                                            BadgedBox(
+                                                badge = {
+                                                    if (showUpdateDot) {
+                                                        Badge()
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                                    contentDescription = tab.label
+                                                )
+                                            }
+                                        },
+                                        label = {
+                                            Text(
+                                                text = tab.label,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        modifier = Modifier.testTag(tab.testTag)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = !isBottomBarVisible,
+                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 4.dp,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .navigationBarsPadding()
+                                .minimumInteractiveComponentSize()
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                                .clickable { isBottomBarVisible = true }
+                                .testTag("bottom_bar_show_button")
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowUp,
+                                    contentDescription = "Mostrar menú inferior",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -76,6 +76,7 @@ import com.example.domain.model.ManualException
 import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
+import com.example.ui.components.CompactSearchBar
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
 
@@ -198,21 +199,13 @@ fun CircuitsScreen(
                     CircuitsPrimaryTab.CIRCUIT_EDITOR -> {
                         item(key = "circuit_filters") {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = state.searchQuery,
-                                    onValueChange = viewModel::updateSearch,
-                                    placeholder = { Text("Buscar por código, nombre o comentario…") },
-                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                                    trailingIcon = {
-                                        if (state.searchQuery.isNotEmpty()) {
-                                            IconButton(onClick = { viewModel.updateSearch("") }) {
-                                                Icon(Icons.Filled.Close, contentDescription = "Limpiar")
-                                            }
-                                        }
-                                    },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.fillMaxWidth()
+                                CompactSearchBar(
+                                    query = state.searchQuery,
+                                    onQueryChange = viewModel::updateSearch,
+                                    placeholder = "Buscar código, nombre o comentario…",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("circuits_search_input")
                                 )
                                 Row(
                                     modifier = Modifier
@@ -403,11 +396,17 @@ fun CircuitsScreen(
 
                                         OutlinedButton(
                                             onClick = { pickingMembersForGroup = grp },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Icon(Icons.Filled.GroupAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Seleccionar circuitos del grupo (${assigned.size})")
+                                            Text(
+                                                text = "Circuitos del grupo (${assigned.size})",
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     }
                                 }

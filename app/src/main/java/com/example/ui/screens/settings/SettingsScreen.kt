@@ -52,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,16 +68,17 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.BuildConfig
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ThemeMode
+import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.SunriseSunsetService
 import com.example.sync.UpdateChannelStatus
 import com.example.ui.components.IslaEmblemBadge
-import com.example.ui.screens.onboarding.TimezonePickerDialog
+import com.example.ui.components.TimezonePickerDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import kotlinx.coroutines.delay
 import java.time.ZoneId
 
 @Composable
@@ -93,6 +95,14 @@ fun SettingsScreen(
     val p = state.prefs
     val activeZone = remember(p.useSystemTimezone, p.manualTimezoneId) {
         ScheduleEngine.effectiveZone(p.useSystemTimezone, p.manualTimezoneId)
+    }
+    var currentNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(activeZone, p.use24HourFormat) {
+        currentNowMillis = System.currentTimeMillis()
+        while (true) {
+            delay(5_000L)
+            currentNowMillis = System.currentTimeMillis()
+        }
     }
 
     var syncUrlInput by remember(p.syncUrl) { mutableStateOf(p.syncUrl) }
@@ -171,7 +181,7 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "Configuración activa: v${p.activeConfigVersion}",
+                                    text = "Configuración activa: v${p.activeConfigVersionName}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -213,6 +223,23 @@ fun SettingsScreen(
                 // Timezone & Clock Format
                 item(key = "timezone_format_card") {
                     SettingsSectionCard(title = "Zona horaria y formato de hora") {
+                        val systemZone = remember { ZoneId.systemDefault() }
+                        val systemGmtLabel = remember(currentNowMillis) {
+                            ScheduleEngine.formatGmtOffset(systemZone)
+                        }
+                        val manualZone = remember(p.manualTimezoneId) {
+                            ScheduleEngine.parseManualZoneId(p.manualTimezoneId)
+                        }
+                        val manualGmtLabel = remember(manualZone, currentNowMillis) {
+                            ScheduleEngine.formatGmtOffset(manualZone)
+                        }
+                        val manualSummary = remember(manualZone, currentNowMillis) {
+                            ScheduleEngine.formatZoneSummary(manualZone)
+                        }
+                        val activeSummary = remember(activeZone, currentNowMillis) {
+                            ScheduleEngine.formatZoneSummary(activeZone)
+                        }
+
                         Text("Zona horaria", style = MaterialTheme.typography.labelLarge)
                         Row(
                             modifier = Modifier
@@ -223,7 +250,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = p.useSystemTimezone,
                                 onClick = { viewModel.setTimezonePreference(true, p.manualTimezoneId) },
-                                label = { Text("Automática (${ZoneId.systemDefault().id})") }
+                                label = { Text("Automática ($systemGmtLabel)", maxLines = 1, softWrap = false) }
                             )
                             FilterChip(
                                 selected = !p.useSystemTimezone,
@@ -231,18 +258,24 @@ fun SettingsScreen(
                                     viewModel.setTimezonePreference(false, p.manualTimezoneId)
                                     showTimezoneDialog = true
                                 },
-                                label = { Text("Manual") }
+                                label = { Text("Manual ($manualGmtLabel)", maxLines = 1, softWrap = false) }
                             )
                         }
 
                         if (!p.useSystemTimezone) {
                             OutlinedButton(
                                 onClick = { showTimezoneDialog = true },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Filled.Public, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Zona manual: ${p.manualTimezoneId}")
+                                Text(
+                                    text = "Zona manual: $manualSummary",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
@@ -257,19 +290,24 @@ fun SettingsScreen(
                                 selected = !p.use24HourFormat,
                                 onClick = { viewModel.setUse24HourFormat(false) },
                                 leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                label = { Text("12 horas (AM/PM)") }
+                                label = { Text("12 horas (AM/PM)", maxLines = 1, softWrap = false) }
                             )
                             FilterChip(
                                 selected = p.use24HourFormat,
                                 onClick = { viewModel.setUse24HourFormat(true) },
                                 leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                label = { Text("24 horas") }
+                                label = { Text("24 horas", maxLines = 1, softWrap = false) }
                             )
                         }
 
                         Text(
-                            text = "Hora actual en zona activa: ${ScheduleEngine.formatTime(System.currentTimeMillis(), p.use24HourFormat, activeZone)} (${activeZone.id})",
+                            text = "Hora actual en zona activa: ${ScheduleEngine.formatTime(currentNowMillis, p.use24HourFormat, activeZone)} ($activeSummary)",
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Dispositivo detectado: ${systemZone.id} ($systemGmtLabel)",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -384,15 +422,22 @@ fun SettingsScreen(
                                 ) {
                                     OutlinedButton(
                                         onClick = { showDayNightDialog = true },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                         modifier = Modifier
                                             .weight(1f)
                                             .testTag("settings_day_night_config_button")
                                     ) {
-                                        Text("Configurar")
+                                        Text(
+                                            text = "Configurar",
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                     Button(
                                         onClick = viewModel::syncSolarTimesNow,
                                         enabled = !state.isSolarSyncing,
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                         modifier = Modifier
                                             .weight(1f)
                                             .testTag("settings_solar_sync_now_button")
@@ -405,8 +450,13 @@ fun SettingsScreen(
                                         } else {
                                             Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                         }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Sincronizar")
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            text = "Sincronizar",
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
 
@@ -459,7 +509,7 @@ fun SettingsScreen(
                                     )
                                     Text(
                                         text = if (state.hasPrimaryHome) {
-                                            "Vinculado a ${state.primaryHomeLabel}: verde con servicio, rojo sin servicio, amarillo predeterminado."
+                                            "Vinculado a ${state.primaryHomeLabel}: verde con servicio, rojo sin servicio, azul predeterminado."
                                         } else {
                                             "Marca un circuito como 'Mi vivienda' en Inicio para que el ícono cambie según su estado."
                                         },
@@ -476,13 +526,19 @@ fun SettingsScreen(
 
                         OutlinedButton(
                             onClick = viewModel::replayOnboarding,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("settings_replay_onboarding_button")
                         ) {
                             Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Repetir asistente de configuración inicial")
+                            Text(
+                                text = "Repetir asistente inicial",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -498,13 +554,19 @@ fun SettingsScreen(
 
                         Button(
                             onClick = { viewModel.generateExport(includePersonalInExport) },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("export_generate_button")
                         ) {
                             Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Exportar código alfanumérico o JSON")
+                            Text(
+                                text = "Exportar código o JSON",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
                         OutlinedTextField(
@@ -524,34 +586,52 @@ fun SettingsScreen(
                             Button(
                                 onClick = { viewModel.inspectAlphanumericCode(pasteCodeInput) },
                                 enabled = pasteCodeInput.isNotBlank(),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("import_code_button")
                             ) {
-                                Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Validar código")
+                                Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Validar código",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             OutlinedButton(
                                 onClick = { openJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("import_json_button")
                             ) {
-                                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Importar JSON")
+                                Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Importar JSON",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
                         if (state.hasBackup) {
                             OutlinedButton(
                                 onClick = viewModel::restoreLatestBackup,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Restaurar respaldo anterior")
+                                Text(
+                                    text = "Restaurar respaldo anterior",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }
@@ -602,13 +682,20 @@ fun SettingsScreen(
                         ) {
                             OutlinedButton(
                                 onClick = { viewModel.saveSyncSettings(syncUrlInput, autoSyncEnabled, syncIntervalHours) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Guardar URL")
+                                Text(
+                                    text = "Guardar URL",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             Button(
                                 onClick = { viewModel.triggerManualSync(syncUrlInput) },
                                 enabled = !state.isSyncing,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("sync_now_button")
@@ -616,15 +703,25 @@ fun SettingsScreen(
                                 if (state.isSyncing) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sincronizar")
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "Sincronizar",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
                         val lastSyncStr = if (p.lastSyncEpochMillis > 0L) {
-                            "Última descarga: ${ScheduleEngine.formatDateTimeReadable(p.lastSyncEpochMillis, p.use24HourFormat, activeZone)} • v${p.lastRemoteConfigVersion}"
+                            val remoteVerLabel = AppVersionConfig.formatConfigVersionDisplay(
+                                numericVersion = p.lastRemoteConfigVersion,
+                                versionName = p.lastRemoteConfigVersionName,
+                                fallbackTimestampMillis = p.lastSyncEpochMillis
+                            )
+                            "Última descarga: ${ScheduleEngine.formatDateTimeReadable(p.lastSyncEpochMillis, p.use24HourFormat, activeZone)} • v$remoteVerLabel"
                         } else {
                             "Sin descargas recientes"
                         }
@@ -697,13 +794,13 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Versión instalada: v${BuildConfig.VERSION_NAME} (Comp. ${BuildConfig.VERSION_CODE})",
+                                    text = "Versión instalada: v${AppVersionConfig.APP_VERSION_NAME}",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = p.latestKnownStatus,
+                                    text = "Código interno: ${AppVersionConfig.APP_VERSION_CODE} • ${p.latestKnownStatus}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (state.updateAvailable) {
                                         MaterialTheme.colorScheme.primary
@@ -724,7 +821,7 @@ fun SettingsScreen(
                                     text = if (state.updateAvailable) {
                                         "Disponible ${AppUpdateService.normalizeVersionLabel(p.latestKnownTag)}"
                                     } else {
-                                        "v${BuildConfig.VERSION_NAME}"
+                                        "v${AppVersionConfig.APP_VERSION_NAME}"
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
@@ -782,6 +879,7 @@ fun SettingsScreen(
                             OutlinedButton(
                                 onClick = viewModel::checkAppUpdatesNow,
                                 enabled = !state.isCheckingUpdates,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("settings_check_updates_button")
@@ -792,10 +890,15 @@ fun SettingsScreen(
                                         strokeWidth = 2.dp
                                     )
                                 } else {
-                                    Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (state.isCheckingUpdates) "Buscando…" else "Comprobar")
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = if (state.isCheckingUpdates) "Buscando…" else "Comprobar",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
 
                             val targetDownloadUrl = if (state.updateAvailable && p.latestKnownDownloadUrl.isNotBlank()) {
@@ -805,13 +908,19 @@ fun SettingsScreen(
                             }
                             Button(
                                 onClick = { viewModel.openExternalUrl(targetDownloadUrl) },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("settings_download_update_button")
                             ) {
-                                Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(if (state.updateAvailable) "Actualizar" else "GitHub Releases")
+                                Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = if (state.updateAvailable) "Actualizar" else "Ver Releases",
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
 
@@ -898,9 +1007,15 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "Luz Isla – Horarios Eléctricos (v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE})",
+                                    text = "Acerca de · Luz Isla",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Versión v${AppVersionConfig.APP_VERSION_NAME} (Compilación ${AppVersionConfig.APP_VERSION_CODE}) • Config. v${p.activeConfigVersionName}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
                                     text = "Esta aplicación NO es una aplicación oficial de la Empresa Eléctrica ni realiza mediciones en tiempo real de la red. Todos los estados mostrados corresponden a pronósticos y reglas programadas configuradas localmente o sincronizadas mediante archivo JSON. Los datos del 19 y 20 de noviembre de 2026 incluidos inicialmente son únicamente registros históricos de prueba.",
@@ -943,6 +1058,12 @@ fun SettingsScreen(
     if (showTimezoneDialog) {
         TimezonePickerDialog(
             currentZoneId = p.manualTimezoneId,
+            use24h = p.use24HourFormat,
+            isUsingSystemTimezone = p.useSystemTimezone,
+            onUseSystemTimezone = {
+                viewModel.setTimezonePreference(useSystem = true, manualTimezoneId = p.manualTimezoneId)
+                showTimezoneDialog = false
+            },
             onSelect = { zoneIdStr ->
                 viewModel.setTimezonePreference(useSystem = false, manualTimezoneId = zoneIdStr)
                 showTimezoneDialog = false

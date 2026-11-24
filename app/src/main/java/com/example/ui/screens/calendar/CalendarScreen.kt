@@ -185,16 +185,18 @@ fun CalendarScreen(
                             FilterChip(
                                 selected = state.viewMode == mode,
                                 onClick = { viewModel.selectViewMode(mode) },
-                                label = { Text(mode.label) },
+                                label = { Text(mode.label, maxLines = 1, softWrap = false) },
                                 modifier = Modifier.testTag("calendar_mode_${mode.name.lowercase()}")
                             )
                         }
-                        FilterChip(
-                            selected = state.favoritesOnly,
-                            onClick = viewModel::toggleFavoritesOnly,
-                            leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            label = { Text("Solo favoritos") }
-                        )
+                        if (state.viewMode != CalendarViewMode.GROUPS) {
+                            FilterChip(
+                                selected = state.favoritesOnly,
+                                onClick = viewModel::toggleFavoritesOnly,
+                                leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Solo favoritos", maxLines = 1, softWrap = false) }
+                            )
+                        }
                     }
 
                     TimelineSegmentLegend()

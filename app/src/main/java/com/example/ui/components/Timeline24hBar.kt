@@ -56,10 +56,18 @@ import com.example.domain.model.ScheduledState
 import com.example.domain.model.TimelineSegment
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
+import androidx.compose.ui.graphics.lerp
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.PI
 import kotlin.math.sin
+
+private data class TimelineSegSpan(
+    val seg: TimelineSegment,
+    val startFrac: Float,
+    val endFrac: Float,
+    val color: Color
+)
 
 @Composable
 fun Timeline24hBar(
@@ -82,19 +90,18 @@ fun Timeline24hBar(
     val dayEnd = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
     val totalDayMillis = (dayEnd - dayStart).coerceAtLeast(1L).toFloat()
 
-    val dividerColor = MaterialTheme.colorScheme.surface
     val highlightColor = MaterialTheme.colorScheme.primary
 
     val hasServiceSegments = remember(segments) {
         segments.any { it.state == ScheduledState.SERVICE_SCHEDULED }
     }
     val electricPhase = if (enableElectricAnimations && hasServiceSegments) {
-        val transition = rememberInfiniteTransition(label = "timeline_electric_static")
+        val transition = rememberInfiniteTransition(label = "timeline_electric_flow")
         val phase by transition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1900, easing = LinearEasing),
+                animation = tween(durationMillis = 2200, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             ),
             label = "electric_phase"
@@ -104,29 +111,79 @@ fun Timeline24hBar(
         0f
     }
 
+    // Simplified night sky <-> day sky border gradient (fewer colors, atmospheric blue progression)
     val dayNightBrush = remember(sunriseMinutes, sunsetMinutes) {
-        val sr = (sunriseMinutes / 1440f).coerceIn(0.12f, 0.45f)
-        val ss = (sunsetMinutes / 1440f).coerceIn(0.55f, 0.90f)
-        val nightDeep = Color(0xFF141E3C)
-        val twilight = Color(0xFF2B3F75)
-        val dawnGold = Color(0xFFFFB74D)
-        val skyBlue = Color(0xFF38BDF8)
-        val noonSun = Color(0xFFFDE047)
-        val duskCoral = Color(0xFFFF7043)
+        val sr = (sunriseMinutes / 1440f).coerceIn(0.14f, 0.44f)
+        val ss = (sunsetMinutes / 1440f).coerceIn(0.56f, 0.88f)
+        val nightSky = Color(0xFF0B162C)
+        val transitionSky = Color(0xFF1D4ED8)
+        val daySky = Color(0xFF38BDF8)
+        val middaySky = Color(0xFF7DD3FC)
 
         Brush.horizontalGradient(
             colorStops = arrayOf(
-                0.00f to nightDeep,
-                (sr - 0.05f).coerceAtLeast(0.02f) to twilight,
-                sr to dawnGold,
-                (sr + 0.08f).coerceAtMost(0.48f) to skyBlue,
-                0.50f to noonSun,
-                (ss - 0.08f).coerceAtLeast(0.52f) to skyBlue,
-                ss to duskCoral,
-                (ss + 0.05f).coerceAtMost(0.98f) to twilight,
-                1.00f to nightDeep
+                0.00f to nightSky,
+                (sr - 0.04f).coerceAtLeast(0.02f) to nightSky,
+                (sr + 0.03f).coerceAtMost(0.46f) to transitionSky,
+                (sr + 0.11f).coerceAtMost(0.49f) to daySky,
+                0.50f to middaySky,
+                (ss - 0.11f).coerceAtLeast(0.51f) to daySky,
+                (ss - 0.03f).coerceAtLeast(0.54f) to transitionSky,
+                (ss + 0.04f).coerceAtMost(0.98f) to nightSky,
+                1.00f to nightSky
             )
         )
+    }
+
+    val spans = remember(segments, dayStart, totalDayMillis, statusColors) {
+        segments.mapNotNull { seg ->
+            val s = ((seg.startMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
+            val e = ((seg.endMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
+            if (e <= s) null
+            else {
+                val c = when (seg.state) {
+                    ScheduledState.SERVICE_SCHEDULED -> statusColors.service
+                    ScheduledState.OUTAGE_SCHEDULED -> statusColors.outage
+                    ScheduledState.UNKNOWN -> statusColors.unknown
+                }
+                TimelineSegSpan(seg, s, e, c)
+            }
+        }
+    }
+
+    val blendedBaseBrush = remember(spans, statusColors.unknown) {
+        if (spans.isEmpty()) {
+            Brush.horizontalGradient(listOf(statusColors.unknown, statusColors.unknown))
+        } else if (spans.size == 1) {
+            Brush.horizontalGradient(listOf(spans.first().color, spans.first().color))
+        } else {
+            val stops = mutableListOf<Pair<Float, Color>>()
+            stops += 0f to spans.first().color
+            for (i in 0 until spans.lastIndex) {
+                val curr = spans[i]
+                val next = spans[i + 1]
+                if (curr.stateColorEquals(next)) continue
+                val boundary = next.startFrac.coerceIn(0f, 1f)
+                val currLen = (curr.endFrac - curr.startFrac).coerceAtLeast(0.002f)
+                val nextLen = (next.endFrac - next.startFrac).coerceAtLeast(0.002f)
+                val halfBlend = minOf(0.020f, currLen * 0.36f, nextLen * 0.36f)
+                val leftStop = (boundary - halfBlend).coerceAtLeast(stops.last().first)
+                val rightStop = (boundary + halfBlend).coerceAtMost(1f)
+                if (leftStop > stops.last().first) {
+                    stops += leftStop to curr.color
+                }
+                stops += boundary.coerceIn(leftStop, rightStop) to lerp(curr.color, next.color, 0.5f)
+                if (rightStop > boundary) {
+                    stops += rightStop to next.color
+                }
+            }
+            if (stops.last().first < 1f) {
+                stops += 1f to spans.last().color
+            } else {
+                stops[stops.lastIndex] = 1f to spans.last().color
+            }
+            Brush.horizontalGradient(colorStops = stops.toTypedArray())
+        }
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -134,14 +191,14 @@ fun Timeline24hBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .border(width = 3.dp, brush = dayNightBrush, shape = RoundedCornerShape(12.dp))
-                .padding(3.dp)
+                .border(width = 2.6.dp, brush = dayNightBrush, shape = RoundedCornerShape(12.dp))
+                .padding(2.6.dp)
         ) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(barHeight)
-                    .clip(RoundedCornerShape(9.dp))
+                    .clip(RoundedCornerShape(9.5.dp))
                     .pointerInput(segments, dayStart, totalDayMillis) {
                         detectTapGestures { tapOffset ->
                             val frac = (tapOffset.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -156,138 +213,268 @@ fun Timeline24hBar(
                 val w = size.width
                 val h = size.height
 
-                if (segments.isEmpty()) {
+                if (spans.isEmpty()) {
                     drawRoundRect(
                         color = statusColors.unknown,
                         topLeft = Offset.Zero,
                         size = Size(w, h),
-                        cornerRadius = CornerRadius(9f, 9f)
+                        cornerRadius = CornerRadius(9.5f, 9.5f)
                     )
                 } else {
-                    segments.forEachIndexed { idx, seg ->
-                        val startFrac = ((seg.startMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
-                        val endFrac = ((seg.endMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
-                        val left = startFrac * w
-                        val segWidth = ((endFrac - startFrac) * w).coerceAtLeast(2f)
+                    // 1. Continuous blended base gradient (zero hard vertical cuts or dark lines)
+                    drawRect(
+                        brush = blendedBaseBrush,
+                        topLeft = Offset.Zero,
+                        size = Size(w, h)
+                    )
 
-                        val segColor = when (seg.state) {
-                            ScheduledState.SERVICE_SCHEDULED -> statusColors.service
-                            ScheduledState.OUTAGE_SCHEDULED -> statusColors.outage
-                            ScheduledState.UNKNOWN -> statusColors.unknown
-                        }
-                        drawRect(
-                            color = segColor,
-                            topLeft = Offset(left, 0f),
-                            size = Size(segWidth, h)
-                        )
+                    val twoPi = (2.0 * PI).toFloat()
 
-                        // Animated electric current + static crackling arcs inside green service blocks
-                        if (enableElectricAnimations && seg.state == ScheduledState.SERVICE_SCHEDULED && segWidth > 4f) {
-                            clipRect(
-                                left = left,
-                                top = 0f,
-                                right = (left + segWidth).coerceAtMost(w),
-                                bottom = h
-                            ) {
-                                // Flowing electric charge wave
-                                val bandHalf = (w * 0.14f).coerceAtLeast(28f)
-                                val waveCenter = -bandHalf + electricPhase * (w + bandHalf * 2f)
-                                drawRect(
-                                    brush = Brush.horizontalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color(0xFFA7F3D0).copy(alpha = 0.38f),
-                                            Color.White.copy(alpha = 0.28f),
-                                            Color(0xFFA7F3D0).copy(alpha = 0.38f),
-                                            Color.Transparent
-                                        ),
-                                        startX = waveCenter - bandHalf,
-                                        endX = waveCenter + bandHalf
+                    // 2. Render inert/powered-off textures on OUTAGE_SCHEDULED segments
+                    spans.forEachIndexed { idx, span ->
+                        if (span.seg.state != ScheduledState.OUTAGE_SCHEDULED) return@forEachIndexed
+                        val left = span.startFrac * w
+                        val right = span.endFrac * w
+                        val segW = right - left
+                        if (segW <= 3f) return@forEachIndexed
+
+                        val fadeLeft = if (idx > 0 && spans[idx - 1].seg.state != ScheduledState.OUTAGE_SCHEDULED) {
+                            minOf(14.dp.toPx(), segW * 0.35f)
+                        } else 0f
+                        val fadeRight = if (idx < spans.lastIndex && spans[idx + 1].seg.state != ScheduledState.OUTAGE_SCHEDULED) {
+                            minOf(14.dp.toPx(), segW * 0.35f)
+                        } else 0f
+
+                        clipRect(left = left, top = 0f, right = right, bottom = h) {
+                            // Subtle "powered-down" dark-coral overlay that softens near green boundaries
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    colorStops = arrayOf(
+                                        0f to if (fadeLeft > 0f) Color.Transparent else Color(0xFF450A0A).copy(alpha = 0.22f),
+                                        (fadeLeft / segW).coerceIn(0f, 0.45f) to Color(0xFF450A0A).copy(alpha = 0.22f),
+                                        (1f - (fadeRight / segW)).coerceIn(0.55f, 1f) to Color(0xFF450A0A).copy(alpha = 0.22f),
+                                        1f to if (fadeRight > 0f) Color.Transparent else Color(0xFF450A0A).copy(alpha = 0.22f)
                                     ),
-                                    topLeft = Offset(left, 0f),
-                                    size = Size(segWidth, h)
-                                )
+                                    startX = left,
+                                    endX = right
+                                ),
+                                topLeft = Offset(left, 0f),
+                                size = Size(segW, h)
+                            )
 
-                                // Two live static/current filaments crackling across the block
-                                val stepPx = 7.dp.toPx().coerceAtLeast(6f)
-                                val steps = ((segWidth / stepPx).toInt() + 1).coerceAtLeast(2)
-                                val twoPi = (2.0 * PI).toFloat()
-
-                                val upperPath = Path()
-                                val lowerPath = Path()
-                                for (s in 0..steps) {
-                                    val px = (left + s * stepPx).coerceAtMost(left + segWidth)
-                                    val n1 = sin((px * 0.09f) - electricPhase * twoPi * 3f)
-                                    val n2 = sin((px * 0.23f) + electricPhase * twoPi * 5f)
-                                    val yTop = h * 0.34f + (n1 * 0.6f + n2 * 0.4f) * (h * 0.16f)
-                                    val yBot = h * 0.68f + (sin((px * 0.13f) + electricPhase * twoPi * 4f) * 0.6f - n2 * 0.4f) * (h * 0.15f)
-                                    if (s == 0) {
-                                        upperPath.moveTo(px, yTop)
-                                        lowerPath.moveTo(px, yBot)
-                                    } else {
-                                        upperPath.lineTo(px, yTop)
-                                        lowerPath.lineTo(px, yBot)
-                                    }
-                                }
-                                drawPath(
-                                    path = upperPath,
-                                    color = Color(0xFFD1FAE5).copy(alpha = 0.55f),
-                                    style = Stroke(width = 1.4.dp.toPx(), cap = StrokeCap.Round)
+                            // Cold, sagging low-energy horizontal filament indicating inactive line
+                            val stepPx = 6.dp.toPx().coerceAtLeast(5f)
+                            val steps = ((segW / stepPx).toInt() + 1).coerceAtLeast(2)
+                            val flatColor = Color(0xFFFEE2E2).copy(alpha = 0.22f)
+                            for (s in 0 until steps) {
+                                val px0 = (left + s * stepPx).coerceAtMost(right)
+                                val px1 = (left + (s + 1) * stepPx).coerceAtMost(right)
+                                if (px1 <= px0) continue
+                                val mid = (px0 + px1) * 0.5f
+                                val env = edgeEnvelope(mid, left, right, fadeLeft, fadeRight)
+                                val y0 = h * 0.64f + sin(px0 * 0.045f) * (h * 0.04f) * env
+                                val y1 = h * 0.64f + sin(px1 * 0.045f) * (h * 0.04f) * env
+                                drawLine(
+                                    color = flatColor.copy(alpha = 0.24f * env),
+                                    start = Offset(px0, y0),
+                                    end = Offset(px1, y1),
+                                    strokeWidth = 1.1.dp.toPx(),
+                                    cap = StrokeCap.Round
                                 )
-                                drawPath(
-                                    path = lowerPath,
-                                    color = Color.White.copy(alpha = 0.36f),
-                                    style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
-                                )
+                            }
 
-                                // Tiny drifting static spark nodes inside the block
-                                val sparkCount = (segWidth / 28f).toInt().coerceIn(1, 6)
-                                for (k in 0 until sparkCount) {
-                                    val localFrac = ((k.toFloat() / sparkCount) + electricPhase * 1.35f) % 1f
-                                    val sx = left + localFrac * segWidth
-                                    val sy = h * (0.25f + 0.5f * ((sin((k * 2.1 + electricPhase * 12.0)) + 1.0).toFloat() * 0.5f))
+                            // Faint dormant specks sitting nearly stationary in the unpowered zone
+                            val speckCount = (segW / 32.dp.toPx()).toInt().coerceIn(1, 7)
+                            for (k in 0 until speckCount) {
+                                val fx = (k + 0.5f) / speckCount
+                                val sx = left + fx * segW
+                                val env = edgeEnvelope(sx, left, right, fadeLeft, fadeRight)
+                                if (env > 0.15f) {
+                                    val sy = h * (0.30f + 0.42f * ((k * 37 % 10) / 9f))
                                     drawCircle(
-                                        color = Color.White.copy(alpha = 0.72f),
-                                        radius = 1.4.dp.toPx(),
+                                        color = Color(0xFFFCA5A5).copy(alpha = 0.22f * env),
+                                        radius = 1.1.dp.toPx(),
                                         center = Offset(sx, sy)
                                     )
                                 }
                             }
                         }
+                    }
 
-                        if (selectedSegment != null &&
-                            selectedSegment.startMillis == seg.startMillis &&
-                            selectedSegment.endMillis == seg.endMillis
-                        ) {
+                    // 3. Render sinuous current waves & glowing flowing "electron" light particles on SERVICE_SCHEDULED
+                    spans.forEachIndexed { idx, span ->
+                        if (span.seg.state != ScheduledState.SERVICE_SCHEDULED) return@forEachIndexed
+                        val left = span.startFrac * w
+                        val right = span.endFrac * w
+                        val segW = right - left
+                        if (segW <= 3f) return@forEachIndexed
+
+                        val hasLeftTransition = idx > 0 && spans[idx - 1].seg.state != ScheduledState.SERVICE_SCHEDULED
+                        val hasRightTransition = idx < spans.lastIndex && spans[idx + 1].seg.state != ScheduledState.SERVICE_SCHEDULED
+                        val bleedPx = 6.dp.toPx()
+                        val rampPx = minOf(18.dp.toPx(), segW * 0.42f)
+
+                        val drawLeft = (left - if (hasLeftTransition) bleedPx else 0f).coerceAtLeast(0f)
+                        val drawRight = (right + if (hasRightTransition) bleedPx else 0f).coerceAtMost(w)
+                        val drawWidth = (drawRight - drawLeft).coerceAtLeast(1f)
+
+                        clipRect(left = drawLeft, top = 0f, right = drawRight, bottom = h) {
+                            // Moving emerald-mint luminous surge along the energized span
+                            if (enableElectricAnimations) {
+                                val bandHalf = (w * 0.16f).coerceAtLeast(30f)
+                                val surgeCenter = -bandHalf + electricPhase * (w + bandHalf * 2f)
+                                drawRect(
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color(0xFFA7F3D0).copy(alpha = 0.26f),
+                                            Color.White.copy(alpha = 0.24f),
+                                            Color(0xFFA7F3D0).copy(alpha = 0.26f),
+                                            Color.Transparent
+                                        ),
+                                        startX = surgeCenter - bandHalf,
+                                        endX = surgeCenter + bandHalf
+                                    ),
+                                    topLeft = Offset(drawLeft, 0f),
+                                    size = Size(drawWidth, h)
+                                )
+                            }
+
+                            // Two sinuous green-mint energy waves whose amplitude & opacity ramp smoothly across boundaries
+                            val stepPx = 4.dp.toPx().coerceAtLeast(4f)
+                            val steps = ((drawWidth / stepPx).toInt() + 1).coerceAtLeast(2)
+
+                            fun waveUpperY(px: Float, env: Float): Float {
+                                val n1 = sin((px * 0.085f) - electricPhase * twoPi * 3f)
+                                val n2 = sin((px * 0.19f) + electricPhase * twoPi * 2f) * 0.35f
+                                return h * 0.38f + (n1 * 0.72f + n2) * (h * 0.17f) * env
+                            }
+
+                            fun waveLowerY(px: Float, env: Float): Float {
+                                val n1 = sin((px * 0.105f) + electricPhase * twoPi * 2f + 1.4f)
+                                val n2 = sin((px * 0.22f) - electricPhase * twoPi * 4f) * 0.30f
+                                return h * 0.65f + (n1 * 0.75f - n2) * (h * 0.16f) * env
+                            }
+
+                            fun envAt(px: Float): Float {
+                                var e = 1f
+                                if (hasLeftTransition) {
+                                    val t = ((px - drawLeft) / (bleedPx + rampPx).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                                    e = minOf(e, smoothStep(t))
+                                }
+                                if (hasRightTransition) {
+                                    val t = ((drawRight - px) / (bleedPx + rampPx).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                                    e = minOf(e, smoothStep(t))
+                                }
+                                return e
+                            }
+
+                            for (s in 0 until steps) {
+                                val x0 = (drawLeft + s * stepPx).coerceAtMost(drawRight)
+                                val x1 = (drawLeft + (s + 1) * stepPx).coerceAtMost(drawRight)
+                                if (x1 <= x0) continue
+                                val mid = (x0 + x1) * 0.5f
+                                val env = envAt(mid)
+                                if (env <= 0.02f) continue
+
+                                val u0 = waveUpperY(x0, env)
+                                val u1 = waveUpperY(x1, env)
+                                val l0 = waveLowerY(x0, env)
+                                val l1 = waveLowerY(x1, env)
+
+                                drawLine(
+                                    color = Color(0xFFD1FAE5).copy(alpha = 0.60f * env),
+                                    start = Offset(x0, u0),
+                                    end = Offset(x1, u1),
+                                    strokeWidth = 1.55.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.38f * env),
+                                    start = Offset(x0, l0),
+                                    end = Offset(x1, l1),
+                                    strokeWidth = 1.2.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
+
+                            // Energetic flowing "electron" light particles vibrating and riding along the sinuous waves
+                            if (enableElectricAnimations) {
+                                val upperElectronCount = (drawWidth / 22.dp.toPx()).toInt().coerceIn(2, 10)
+                                for (k in 0 until upperElectronCount) {
+                                    val frac = ((k.toFloat() / upperElectronCount) + electricPhase * 1.0f) % 1f
+                                    val ex = drawLeft + frac * drawWidth
+                                    val env = envAt(ex)
+                                    if (env <= 0.04f) continue
+                                    val vib = 0.85f + 0.30f * sin((electricPhase * twoPi * 4f) + k * 1.9f)
+                                    val ey = waveUpperY(ex, env)
+                                    // Outer luminous halo
+                                    drawCircle(
+                                        color = Color(0xFF6EE7B7).copy(alpha = 0.42f * env),
+                                        radius = 3.2.dp.toPx() * vib,
+                                        center = Offset(ex, ey)
+                                    )
+                                    // Bright electron core
+                                    drawCircle(
+                                        color = Color(0xFFECFDF5).copy(alpha = 0.94f * env),
+                                        radius = 1.45.dp.toPx() * vib,
+                                        center = Offset(ex, ey)
+                                    )
+                                }
+
+                                val lowerElectronCount = (drawWidth / 28.dp.toPx()).toInt().coerceIn(1, 8)
+                                for (k in 0 until lowerElectronCount) {
+                                    // Counter-flowing / secondary speed stream for rich dynamic depth
+                                    val frac = ((k.toFloat() / lowerElectronCount) + electricPhase * 2.0f) % 1f
+                                    val ex = drawLeft + frac * drawWidth
+                                    val env = envAt(ex)
+                                    if (env <= 0.04f) continue
+                                    val vib = 0.85f + 0.28f * sin((electricPhase * twoPi * 5f) + k * 2.7f)
+                                    val ey = waveLowerY(ex, env)
+                                    drawCircle(
+                                        color = Color(0xFFA7F3D0).copy(alpha = 0.36f * env),
+                                        radius = 2.7.dp.toPx() * vib,
+                                        center = Offset(ex, ey)
+                                    )
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.88f * env),
+                                        radius = 1.25.dp.toPx() * vib,
+                                        center = Offset(ex, ey)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. Optional selected segment highlight (without any black divider lines)
+                    if (selectedSegment != null) {
+                        val hit = spans.firstOrNull {
+                            it.seg.startMillis == selectedSegment.startMillis &&
+                                it.seg.endMillis == selectedSegment.endMillis
+                        }
+                        if (hit != null) {
+                            val left = hit.startFrac * w
+                            val segW = (hit.endFrac - hit.startFrac) * w
                             drawRect(
-                                color = Color.White.copy(alpha = 0.24f),
+                                color = Color.White.copy(alpha = 0.22f),
                                 topLeft = Offset(left, 0f),
-                                size = Size(segWidth, h)
+                                size = Size(segW, h)
                             )
                             drawRect(
                                 color = highlightColor,
                                 topLeft = Offset(left, 0f),
-                                size = Size(segWidth, 3.dp.toPx())
-                            )
-                        }
-
-                        if (idx > 0) {
-                            drawLine(
-                                color = dividerColor,
-                                start = Offset(left, 0f),
-                                end = Offset(left, h),
-                                strokeWidth = 2f
+                                size = Size(segW, 3.dp.toPx())
                             )
                         }
                     }
                 }
 
+                // 5. Crisp current-time marker needle with top pointer and luminous halo
                 if (currentTimeMillis != null && currentTimeMillis in dayStart..dayEnd) {
                     val nowFrac = ((currentTimeMillis - dayStart).toFloat() / totalDayMillis).coerceIn(0f, 1f)
                     val x = (nowFrac * w).coerceIn(3f, (w - 3f).coerceAtLeast(3f))
                     val auraHalf = 8.dp.toPx()
 
-                    // Soft translucent white halo gradient behind the needle
                     drawRect(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
@@ -302,15 +489,13 @@ fun Timeline24hBar(
                         size = Size(auraHalf * 2f, h)
                     )
 
-                    // Subtle dark contrast backing so white needle pops on every color
                     drawLine(
-                        color = Color.Black.copy(alpha = 0.34f),
+                        color = Color.Black.copy(alpha = 0.32f),
                         start = Offset(x, 0f),
                         end = Offset(x, h),
-                        strokeWidth = 4.2.dp.toPx()
+                        strokeWidth = 4.dp.toPx()
                     )
 
-                    // Crisp white vertical line
                     drawLine(
                         color = Color.White,
                         start = Offset(x, 0f),
@@ -318,7 +503,6 @@ fun Timeline24hBar(
                         strokeWidth = 2.4.dp.toPx()
                     )
 
-                    // Top downward white arrow / pointer ("flechita")
                     val arrowHalf = 4.5.dp.toPx()
                     val arrowDepth = 5.5.dp.toPx().coerceAtMost(h * 0.35f)
                     val arrowPath = Path().apply {
@@ -329,11 +513,10 @@ fun Timeline24hBar(
                     }
                     drawPath(path = arrowPath, color = Color.White)
 
-                    // Bottom bright anchor cap
                     drawCircle(
                         color = Color.White,
-                        radius = 2.5.dp.toPx(),
-                        center = Offset(x, (h - 2.5.dp.toPx()).coerceAtLeast(0f))
+                        radius = 2.4.dp.toPx(),
+                        center = Offset(x, (h - 2.4.dp.toPx()).coerceAtLeast(0f))
                     )
                 }
             }
@@ -535,3 +718,29 @@ fun TimelineIntervalsSummaryList(
 }
 
 private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+private fun TimelineSegSpan.stateColorEquals(other: TimelineSegSpan): Boolean =
+    seg.state == other.seg.state && color == other.color
+
+private fun smoothStep(t: Float): Float {
+    val c = t.coerceIn(0f, 1f)
+    return c * c * (3f - 2f * c)
+}
+
+private fun edgeEnvelope(
+    px: Float,
+    left: Float,
+    right: Float,
+    fadeLeft: Float,
+    fadeRight: Float
+): Float {
+    var env = 1f
+    if (fadeLeft > 0f) {
+        env = minOf(env, smoothStep((px - left) / fadeLeft))
+    }
+    if (fadeRight > 0f) {
+        env = minOf(env, smoothStep((right - px) / fadeRight))
+    }
+    return env
+}
+

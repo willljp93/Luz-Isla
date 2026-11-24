@@ -58,21 +58,28 @@ class HttpsSyncManager(
                 val decoded = ConfigCodec.decodeFromJson(body)
                 val prefs = prefsRepo.getSnapshot()
                 if (!forceApply && decoded.payload.configVersion <= prefs.lastRemoteConfigVersion && prefs.lastRemoteConfigVersion > 0) {
-                    val msg = "Ya tienes la versión más reciente (v${prefs.lastRemoteConfigVersion})."
+                    val activeRemoteLabel = prefs.lastRemoteConfigVersionName.ifBlank {
+                        "v${prefs.lastRemoteConfigVersion}"
+                    }
+                    val msg = "Ya tienes la versión más reciente ($activeRemoteLabel)."
                     prefsRepo.recordSyncStatus(msg)
                     return@withContext SyncOutcome.UpToDate(prefs.lastRemoteConfigVersion)
                 }
+
+                val ts = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso) ?: System.currentTimeMillis()
+                val remoteVersionName = decoded.payload.displayVersion(ts)
 
                 // Backup current config before updating
                 val currentSnapshot = repository.getCurrentSnapshot()
                 val backupPayload = ConfigCodec.snapshotToPayload(
                     snapshot = currentSnapshot,
-                    configVersion = prefs.lastRemoteConfigVersion.coerceAtLeast(1),
+                    configVersion = prefs.activeConfigVersion.coerceAtLeast(1),
+                    configVersionName = prefs.activeConfigVersionName,
                     includePersonalData = true,
                     sourceName = "Respaldo previo a sincronización"
                 )
                 repository.saveBackup(
-                    reason = "Antes de sincronización v${decoded.payload.configVersion}",
+                    reason = "Antes de sincronización v$remoteVersionName",
                     payloadJson = ConfigCodec.encodeToJson(backupPayload, pretty = false)
                 )
 
@@ -83,17 +90,18 @@ class HttpsSyncManager(
                     includePersonalFromIncoming = false
                 )
 
-                val status = "Actualizado a v${decoded.payload.configVersion} (${decoded.snapshot.circuits.size} circuitos)"
-                val ts = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso) ?: System.currentTimeMillis()
+                val status = "Actualizado a v$remoteVersionName (${decoded.snapshot.circuits.size} circuitos)"
                 prefsRepo.recordSyncSuccess(
                     version = decoded.payload.configVersion,
                     forecastUpdateMillis = System.currentTimeMillis(),
-                    statusMessage = status
+                    statusMessage = status,
+                    versionName = remoteVersionName
                 )
                 prefsRepo.recordActiveConfigMetadata(
                     version = decoded.payload.configVersion,
                     timestampMillis = ts,
-                    source = "Sincronización HTTPS (${decoded.payload.sourceName.ifBlank { "Remoto" }})"
+                    source = "Sincronización HTTPS (${decoded.payload.sourceName.ifBlank { "Remoto" }})",
+                    versionName = remoteVersionName
                 )
 
                 SyncOutcome.Updated(

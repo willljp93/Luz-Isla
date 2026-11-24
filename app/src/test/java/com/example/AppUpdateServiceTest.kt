@@ -89,6 +89,27 @@ class AppUpdateServiceTest {
                 currentVersionCode = 2
             )
         )
+        assertTrue(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.23.2-b26112302",
+                currentVersionName = "2026.11.23.1",
+                currentVersionCode = 26112301
+            )
+        )
+        assertTrue(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.24.1-b26112401",
+                currentVersionName = "2026.11.23.5",
+                currentVersionCode = 26112305
+            )
+        )
+        assertFalse(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.23.1-b26112301",
+                currentVersionName = "2026.11.23.1",
+                currentVersionCode = 26112301
+            )
+        )
     }
 
     @Test

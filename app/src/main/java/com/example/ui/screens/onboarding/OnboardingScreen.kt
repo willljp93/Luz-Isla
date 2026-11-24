@@ -7,6 +7,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,8 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,7 +38,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -57,11 +56,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
+import com.example.domain.version.AppVersionConfig
 import com.example.ui.components.IslaEmblemBadge
+import com.example.ui.components.TimezonePickerDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.ZoneId
 
@@ -123,7 +125,7 @@ fun OnboardingScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Paso ${step + 1} de 3 • Configuración rápida inicial",
+                                text = "Paso ${step + 1} de 3 • Configuración inicial • v${AppVersionConfig.APP_VERSION_NAME}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -222,17 +224,26 @@ fun OnboardingScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            val sysZone = remember { ZoneId.systemDefault().id }
+                            val sysZone = remember { ZoneId.systemDefault() }
+                            val sysOffsetLabel = remember {
+                                ScheduleEngine.formatGmtOffset(sysZone)
+                            }
+                            val manualZoneObj = remember(manualTz) {
+                                ScheduleEngine.parseManualZoneId(manualTz)
+                            }
+                            val manualSummary = remember(manualZoneObj) {
+                                ScheduleEngine.formatZoneSummary(manualZoneObj)
+                            }
                             ThemeChoiceCard(
-                                title = "Automática del sistema",
-                                subtitle = "Zona detectada: $sysZone",
+                                title = "Automática ($sysOffsetLabel)",
+                                subtitle = "${sysZone.id} • Hora: ${ScheduleEngine.formatTime(nowMillis, use24h, sysZone)}",
                                 icon = Icons.Filled.Public,
                                 selected = useSystemTz,
                                 onClick = { useSystemTz = true }
                             )
                             ThemeChoiceCard(
-                                title = "Manual (seleccionar zona)",
-                                subtitle = "Zona elegida: $manualTz",
+                                title = "Manual ($manualSummary)",
+                                subtitle = "Hora resultante: ${ScheduleEngine.formatTime(nowMillis, use24h, manualZoneObj)}",
                                 icon = Icons.Filled.Public,
                                 selected = !useSystemTz,
                                 onClick = {
@@ -244,9 +255,15 @@ fun OnboardingScreen(
                             if (!useSystemTz) {
                                 OutlinedButton(
                                     onClick = { showTzPicker = true },
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("Cambiar zona horaria ($manualTz)")
+                                    Text(
+                                        text = "Cambiar zona ($manualSummary)",
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -314,37 +331,42 @@ fun OnboardingScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (step > 0) {
-                        OutlinedButton(onClick = { step-- }) {
+                        OutlinedButton(
+                            onClick = { step-- },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Anterior")
+                            Text("Anterior", maxLines = 1, softWrap = false)
                         }
                     } else {
                         TextButton(
                             onClick = { onFinish(useSystemTz, manualTz, use24h) },
                             modifier = Modifier.testTag("onboarding_skip_button")
                         ) {
-                            Text("Omitir")
+                            Text("Omitir", maxLines = 1, softWrap = false)
                         }
                     }
 
                     if (step < 2) {
                         Button(
                             onClick = { step++ },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                             modifier = Modifier.testTag("onboarding_next_button")
                         ) {
-                            Text("Siguiente")
+                            Text("Siguiente", maxLines = 1, softWrap = false)
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                     } else {
                         Button(
                             onClick = { onFinish(useSystemTz, manualTz, use24h) },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                             modifier = Modifier.testTag("onboarding_finish_button")
                         ) {
                             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Comenzar")
+                            Text("Comenzar", maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -355,6 +377,12 @@ fun OnboardingScreen(
     if (showTzPicker) {
         TimezonePickerDialog(
             currentZoneId = manualTz,
+            use24h = use24h,
+            isUsingSystemTimezone = useSystemTz,
+            onUseSystemTimezone = {
+                useSystemTz = true
+                showTzPicker = false
+            },
             onSelect = {
                 manualTz = it
                 useSystemTz = false
@@ -405,74 +433,4 @@ private fun ThemeChoiceCard(
     }
 }
 
-@Composable
-fun TimezonePickerDialog(
-    currentZoneId: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var search by remember { mutableStateOf("") }
-    val priorityZones = remember {
-        listOf(
-            "America/Havana",
-            "America/New_York",
-            "America/Mexico_City",
-            "America/Bogota",
-            "America/Santo_Domingo",
-            "Europe/Madrid",
-            "UTC"
-        )
-    }
-    val allZones = remember {
-        val rest = ZoneId.getAvailableZoneIds().sorted().filter { it !in priorityZones }
-        priorityZones + rest
-    }
-    val filtered = remember(search, allZones) {
-        if (search.isBlank()) allZones
-        else allZones.filter { it.contains(search.trim(), ignoreCase = true) }
-    }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Seleccionar zona horaria") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    placeholder = { Text("Buscar (ej. Havana, Madrid)…") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                ) {
-                    items(filtered, key = { it }) { zid ->
-                        val isSelected = zid == currentZoneId
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(zid) }
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                    else androidx.compose.ui.graphics.Color.Transparent
-                                )
-                                .padding(horizontal = 10.dp, vertical = 10.dp)
-                        ) {
-                            RadioButton(selected = isSelected, onClick = { onSelect(zid) })
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = zid, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cerrar") }
-        }
-    )
-}

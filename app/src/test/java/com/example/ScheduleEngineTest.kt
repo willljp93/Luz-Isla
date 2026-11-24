@@ -206,4 +206,42 @@ class ScheduleEngineTest {
         val noonMadrid = ScheduleEngine.formatTime(noonHavana, use24h = true, zoneId = madrid)
         assertEquals("18:30", noonMadrid)
     }
+
+    @Test
+    fun `numeric GMT offsets and legacy zone IDs parse and format cleanly`() {
+        val gmtMinus5 = ScheduleEngine.parseManualZoneId("GMT-5")
+        assertEquals("GMT-5", ScheduleEngine.formatGmtOffset(gmtMinus5))
+
+        val plus4 = ScheduleEngine.parseManualZoneId("+4")
+        assertEquals("GMT+4", ScheduleEngine.formatGmtOffset(plus4))
+
+        val halfOffset = ScheduleEngine.parseManualZoneId("GMT+5:30")
+        assertEquals("GMT+5:30", ScheduleEngine.formatGmtOffset(halfOffset))
+
+        val legacyHavana = ScheduleEngine.parseManualZoneId("America/Havana")
+        assertEquals(ScheduleEngine.HAVANA_ZONE, legacyHavana)
+
+        val effectiveManual = ScheduleEngine.effectiveZone(useSystemTimezone = false, manualTimezoneId = "GMT-4")
+        assertEquals("GMT-4", ScheduleEngine.formatGmtOffset(effectiveManual))
+
+        val effectiveSystem = ScheduleEngine.effectiveZone(useSystemTimezone = true, manualTimezoneId = "GMT-4")
+        assertEquals(ZoneId.systemDefault(), effectiveSystem)
+        assertEquals(27, ScheduleEngine.gmtOffsetOptions.size)
+        assertEquals("GMT-12", ScheduleEngine.gmtOffsetOptions.first())
+        assertEquals("GMT-11", ScheduleEngine.gmtOffsetOptions[1])
+        assertEquals("GMT-10", ScheduleEngine.gmtOffsetOptions[2])
+        assertEquals("GMT+0", ScheduleEngine.gmtOffsetOptions[12])
+        assertEquals("GMT+14", ScheduleEngine.gmtOffsetOptions.last())
+
+        // Representative IANA resolution matches expected offset across full range
+        val winterInstant = java.time.Instant.parse("2026-11-23T12:00:00Z")
+        for (h in -12..14) {
+            val zoneIdStr = ScheduleEngine.representativeZoneIdForOffset(h, winterInstant)
+            val resolvedZone = ScheduleEngine.parseManualZoneId(zoneIdStr)
+            assertEquals(ScheduleEngine.formatHourOffsetId(h), ScheduleEngine.formatGmtOffset(resolvedZone, winterInstant))
+        }
+        assertEquals("America/Havana", ScheduleEngine.representativeZoneIdForOffset(-5, winterInstant))
+    }
 }
+
+

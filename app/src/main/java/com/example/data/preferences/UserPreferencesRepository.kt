@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.domain.model.ThemeMode
+import com.example.domain.version.AppVersionConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -40,15 +41,19 @@ data class UserPreferences(
     val solarLastStatus: String = "Valores locales predeterminados (Nueva Gerona)",
     val enableElectricAnimations: Boolean = true,
     val dynamicLauncherIconEnabled: Boolean = false,
-    val activeConfigVersion: Int = 1,
+    val activeConfigVersion: Int = AppVersionConfig.APP_VERSION_CODE,
+    val activeConfigVersionName: String = AppVersionConfig.APP_VERSION_NAME,
     val activeConfigTimestampMillis: Long = 0L,
     val activeConfigSource: String = "Configuración local inicial",
+    val lastExportIsoDate: String = "",
+    val lastExportDayBuild: Int = 0,
     val syncUrl: String = "",
     val autoSyncEnabled: Boolean = false,
     val syncIntervalHours: Int = 6,
     val lastSyncEpochMillis: Long = 0L,
     val lastForecastUpdateEpochMillis: Long = 0L,
     val lastRemoteConfigVersion: Int = 0,
+    val lastRemoteConfigVersionName: String = "",
     val lastSyncStatus: String = "Sin sincronización remota configurada",
     val notifyServiceStart: Boolean = true,
     val notifyServiceEnd: Boolean = true,
@@ -95,14 +100,18 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_ELECTRIC_ANIMATIONS = booleanPreferencesKey("enable_electric_animations")
         val DYNAMIC_LAUNCHER_ICON = booleanPreferencesKey("dynamic_launcher_icon")
         val ACTIVE_CONFIG_VERSION = intPreferencesKey("active_config_version")
+        val ACTIVE_CONFIG_VERSION_NAME = stringPreferencesKey("active_config_version_name")
         val ACTIVE_CONFIG_TIMESTAMP = longPreferencesKey("active_config_timestamp")
         val ACTIVE_CONFIG_SOURCE = stringPreferencesKey("active_config_source")
+        val LAST_EXPORT_ISO_DATE = stringPreferencesKey("last_export_iso_date")
+        val LAST_EXPORT_DAY_BUILD = intPreferencesKey("last_export_day_build")
         val SYNC_URL = stringPreferencesKey("sync_url")
         val AUTO_SYNC_ENABLED = booleanPreferencesKey("auto_sync_enabled")
         val SYNC_INTERVAL_HOURS = intPreferencesKey("sync_interval_hours")
         val LAST_SYNC_MILLIS = longPreferencesKey("last_sync_millis")
         val LAST_FORECAST_UPDATE_MILLIS = longPreferencesKey("last_forecast_update_millis")
         val LAST_REMOTE_VERSION = intPreferencesKey("last_remote_version")
+        val LAST_REMOTE_VERSION_NAME = stringPreferencesKey("last_remote_version_name")
         val LAST_SYNC_STATUS = stringPreferencesKey("last_sync_status")
         val NOTIFY_SERVICE_START = booleanPreferencesKey("notify_service_start")
         val NOTIFY_SERVICE_END = booleanPreferencesKey("notify_service_end")
@@ -132,6 +141,13 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         } else {
             emptyMap()
         }
+        val activeNum = prefs[Keys.ACTIVE_CONFIG_VERSION] ?: AppVersionConfig.APP_VERSION_CODE
+        val activeTs = prefs[Keys.ACTIVE_CONFIG_TIMESTAMP] ?: 0L
+        val activeName = AppVersionConfig.formatConfigVersionDisplay(
+            numericVersion = activeNum,
+            versionName = prefs[Keys.ACTIVE_CONFIG_VERSION_NAME].orEmpty(),
+            fallbackTimestampMillis = activeTs
+        )
         UserPreferences(
             onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
             themeMode = runCatching {
@@ -156,15 +172,19 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             solarLastStatus = prefs[Keys.SOLAR_LAST_STATUS] ?: "Valores locales predeterminados (Nueva Gerona)",
             enableElectricAnimations = prefs[Keys.ENABLE_ELECTRIC_ANIMATIONS] ?: true,
             dynamicLauncherIconEnabled = prefs[Keys.DYNAMIC_LAUNCHER_ICON] ?: false,
-            activeConfigVersion = prefs[Keys.ACTIVE_CONFIG_VERSION] ?: 1,
-            activeConfigTimestampMillis = prefs[Keys.ACTIVE_CONFIG_TIMESTAMP] ?: 0L,
+            activeConfigVersion = activeNum,
+            activeConfigVersionName = activeName,
+            activeConfigTimestampMillis = activeTs,
             activeConfigSource = prefs[Keys.ACTIVE_CONFIG_SOURCE] ?: "Configuración local inicial",
+            lastExportIsoDate = prefs[Keys.LAST_EXPORT_ISO_DATE].orEmpty(),
+            lastExportDayBuild = prefs[Keys.LAST_EXPORT_DAY_BUILD] ?: 0,
             syncUrl = prefs[Keys.SYNC_URL].orEmpty(),
             autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: false,
             syncIntervalHours = prefs[Keys.SYNC_INTERVAL_HOURS] ?: 6,
             lastSyncEpochMillis = prefs[Keys.LAST_SYNC_MILLIS] ?: 0L,
             lastForecastUpdateEpochMillis = prefs[Keys.LAST_FORECAST_UPDATE_MILLIS] ?: 0L,
             lastRemoteConfigVersion = prefs[Keys.LAST_REMOTE_VERSION] ?: 0,
+            lastRemoteConfigVersionName = prefs[Keys.LAST_REMOTE_VERSION_NAME].orEmpty(),
             lastSyncStatus = prefs[Keys.LAST_SYNC_STATUS] ?: "Sin sincronización remota configurada",
             notifyServiceStart = prefs[Keys.NOTIFY_SERVICE_START] ?: true,
             notifyServiceEnd = prefs[Keys.NOTIFY_SERVICE_END] ?: true,
@@ -332,11 +352,39 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[Keys.DYNAMIC_LAUNCHER_ICON] = enabled }
     }
 
-    suspend fun recordActiveConfigMetadata(version: Int, timestampMillis: Long, source: String) {
+    suspend fun recordActiveConfigMetadata(
+        version: Int,
+        timestampMillis: Long,
+        source: String,
+        versionName: String = ""
+    ) {
+        val resolvedName = AppVersionConfig.formatConfigVersionDisplay(
+            numericVersion = version,
+            versionName = versionName,
+            fallbackTimestampMillis = timestampMillis
+        )
         dataStore.edit {
             it[Keys.ACTIVE_CONFIG_VERSION] = version.coerceAtLeast(1)
+            it[Keys.ACTIVE_CONFIG_VERSION_NAME] = resolvedName
             it[Keys.ACTIVE_CONFIG_TIMESTAMP] = timestampMillis
             it[Keys.ACTIVE_CONFIG_SOURCE] = source.trim().ifEmpty { "Configuración cargada" }
+        }
+    }
+
+    suspend fun recordDailyExport(
+        isoDate: String,
+        dayBuild: Int,
+        versionCode: Int,
+        versionName: String,
+        timestampMillis: Long
+    ) {
+        dataStore.edit {
+            it[Keys.LAST_EXPORT_ISO_DATE] = isoDate
+            it[Keys.LAST_EXPORT_DAY_BUILD] = dayBuild.coerceAtLeast(1)
+            it[Keys.ACTIVE_CONFIG_VERSION] = versionCode.coerceAtLeast(1)
+            it[Keys.ACTIVE_CONFIG_VERSION_NAME] = versionName
+            it[Keys.ACTIVE_CONFIG_TIMESTAMP] = timestampMillis
+            it[Keys.ACTIVE_CONFIG_SOURCE] = "Exportación local"
         }
     }
 
@@ -348,11 +396,22 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
-    suspend fun recordSyncSuccess(version: Int, forecastUpdateMillis: Long, statusMessage: String) {
+    suspend fun recordSyncSuccess(
+        version: Int,
+        forecastUpdateMillis: Long,
+        statusMessage: String,
+        versionName: String = ""
+    ) {
+        val resolvedName = AppVersionConfig.formatConfigVersionDisplay(
+            numericVersion = version,
+            versionName = versionName,
+            fallbackTimestampMillis = forecastUpdateMillis
+        )
         dataStore.edit {
             it[Keys.LAST_SYNC_MILLIS] = System.currentTimeMillis()
             it[Keys.LAST_FORECAST_UPDATE_MILLIS] = forecastUpdateMillis
             it[Keys.LAST_REMOTE_VERSION] = version
+            it[Keys.LAST_REMOTE_VERSION_NAME] = resolvedName
             it[Keys.LAST_SYNC_STATUS] = statusMessage
         }
     }

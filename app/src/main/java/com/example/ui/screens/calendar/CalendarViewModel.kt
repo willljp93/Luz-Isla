@@ -21,9 +21,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 enum class CalendarViewMode(val label: String) {
-    DAILY_COMPARATIVE("Línea 24h"),
+    DAILY_COMPARATIVE("Circuitos 24h"),
     WEEKLY_7_DAYS("7 días"),
-    BY_CIRCUIT("Por circuito"),
+    BY_CIRCUIT("Detallado"),
     GROUPS("Grupos")
 }
 

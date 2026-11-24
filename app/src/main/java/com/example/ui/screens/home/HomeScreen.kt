@@ -29,13 +29,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PowerOff
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewAgenda
@@ -60,17 +58,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.CircuitStatusEvaluation
 import com.example.domain.model.ScheduledState
+import com.example.domain.version.AppVersionConfig
 import com.example.ui.components.CircuitDetailBottomSheet
+import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.DayNightAmbientScreenBrush
 import com.example.ui.components.DayNightChip
 import com.example.ui.components.IslaEmblemBadge
@@ -139,44 +141,52 @@ fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .background(heroBrush)
-                            .padding(18.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(11.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 IslaEmblemBadge(
                                     state = state.primaryHomeState,
                                     enableAnimation = state.enableElectricAnimations,
-                                    size = 50.dp
+                                    size = 48.dp
                                 )
-                                Column {
+                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                     Text(
                                         text = "Luz Isla",
                                         style = MaterialTheme.typography.titleLarge,
-                                        color = Color.White
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = ScheduleEngine.formatDateEs(nowZdt.toLocalDate()),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.9f)
+                                        color = Color.White.copy(alpha = 0.88f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = ScheduleEngine.formatTime(state.nowMillis, state.use24h, state.zoneId),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     color = Color.White,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                                 Box {
                                     IconButton(
@@ -236,22 +246,43 @@ fun HomeScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             DayNightChip(
                                 isDaytime = state.isDaytime,
                                 sunriseMinutes = state.sunriseMinutes,
                                 sunsetMinutes = state.sunsetMinutes,
-                                use24h = state.use24h
+                                use24h = state.use24h,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
-                            Text(
-                                text = state.zoneId.id.substringAfterLast('/').replace('_', ' '),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.85f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.White.copy(alpha = 0.16f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Public,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(alpha = 0.9f),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = ScheduleEngine.formatGmtOffset(state.zoneId),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
                         }
 
                         Row(
@@ -274,26 +305,6 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-
-                        val lastUpd = if (state.lastUpdateMillis > 0L) {
-                            "Última actualización: ${ScheduleEngine.formatTime(state.lastUpdateMillis, state.use24h, state.zoneId)}"
-                        } else {
-                            "Modo sin conexión • Catálogo local editable"
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Info,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "$lastUpd • Estado programado (no oficial)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
                     }
                 }
             }
@@ -304,28 +315,19 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = state.searchQuery,
-                        onValueChange = viewModel::updateSearch,
-                        placeholder = { Text("Buscar código, nombre o reparto…") },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (state.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.updateSearch("") }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Limpiar búsqueda")
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
+                    CompactSearchBar(
+                        query = state.searchQuery,
+                        onQueryChange = viewModel::updateSearch,
+                        placeholder = "Buscar circuito o reparto…",
                         modifier = Modifier
                             .weight(1f)
                             .testTag("home_search_input")
                     )
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceContainer,
-                        modifier = Modifier.size(52.dp)
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+                        modifier = Modifier.size(44.dp)
                     ) {
                         IconButton(
                             onClick = viewModel::toggleCompactMode,
@@ -333,7 +335,8 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 imageVector = if (state.compactMode) Icons.Filled.ViewAgenda else Icons.Filled.ViewList,
-                                contentDescription = if (state.compactMode) "Vista en tarjetas" else "Vista compacta"
+                                contentDescription = if (state.compactMode) "Vista en tarjetas" else "Vista compacta",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -411,6 +414,24 @@ fun HomeScreen(
                             onToggleFavorite = { viewModel.toggleFavorite(eval.circuit.code) }
                         )
                     }
+                }
+            }
+
+            item(key = "home_version_footer") {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 8.dp)
+                ) {
+                    Text(
+                        text = "Luz Isla · v${AppVersionConfig.APP_VERSION_NAME}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
             }
         }
@@ -540,22 +561,17 @@ private fun RichCircuitCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                val iconAlpha = when {
-                    !enableAnimations -> 1f
-                    eval.state == ScheduledState.SERVICE_SCHEDULED -> 0.72f + 0.28f * electricPulse
-                    eval.state == ScheduledState.OUTAGE_SCHEDULED -> 0.5f + 0.25f * (1f - electricPulse)
-                    else -> 1f
-                }
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(container)
-                        .graphicsLayer { alpha = iconAlpha }
-                ) {
-                    Icon(icon, contentDescription = stateText, tint = accent)
-                }
+                StatusEmblemIconBox(
+                    state = eval.state,
+                    accent = accent,
+                    container = container,
+                    icon = icon,
+                    contentDescription = stateText,
+                    electricPulse = electricPulse,
+                    enableAnimations = enableAnimations,
+                    boxSize = 44.dp,
+                    iconSize = 23.dp
+                )
 
                 Spacer(modifier = Modifier.width(12.dp))
 
@@ -689,20 +705,15 @@ private fun CompactCircuitRow(
 ) {
     val statusColors = LocalElectricStatusColors.current
     val circuit = eval.circuit
-    val accent = when (eval.state) {
-        ScheduledState.SERVICE_SCHEDULED -> statusColors.service
-        ScheduledState.OUTAGE_SCHEDULED -> statusColors.outage
-        ScheduledState.UNKNOWN -> statusColors.unknown
+    val (accent, container, icon) = when (eval.state) {
+        ScheduledState.SERVICE_SCHEDULED -> Triple(statusColors.service, statusColors.serviceContainer, Icons.Filled.Bolt)
+        ScheduledState.OUTAGE_SCHEDULED -> Triple(statusColors.outage, statusColors.outageContainer, Icons.Filled.PowerOff)
+        ScheduledState.UNKNOWN -> Triple(statusColors.unknown, statusColors.unknownContainer, Icons.Filled.HelpOutline)
     }
     val statusShort = when (eval.state) {
         ScheduledState.SERVICE_SCHEDULED -> "Con servicio"
         ScheduledState.OUTAGE_SCHEDULED -> "Sin servicio"
         ScheduledState.UNKNOWN -> "Sin info"
-    }
-    val dotAlpha = if (enableAnimations && eval.state == ScheduledState.SERVICE_SCHEDULED) {
-        0.55f + 0.45f * electricPulse
-    } else {
-        1f
     }
 
     Surface(
@@ -718,12 +729,16 @@ private fun CompactCircuitRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .graphicsLayer { alpha = dotAlpha }
-                    .background(accent)
+            StatusEmblemIconBox(
+                state = eval.state,
+                accent = accent,
+                container = container,
+                icon = icon,
+                contentDescription = statusShort,
+                electricPulse = electricPulse,
+                enableAnimations = enableAnimations,
+                boxSize = 32.dp,
+                iconSize = 17.dp
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -760,6 +775,85 @@ private fun CompactCircuitRow(
                     tint = if (circuit.isFavorite) statusColors.favorite else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun StatusEmblemIconBox(
+    state: ScheduledState,
+    accent: Color,
+    container: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    electricPulse: Float,
+    enableAnimations: Boolean,
+    boxSize: Dp,
+    iconSize: Dp
+) {
+    val isService = state == ScheduledState.SERVICE_SCHEDULED
+    val isOutage = state == ScheduledState.OUTAGE_SCHEDULED
+
+    val borderColor = when {
+        enableAnimations && isService -> accent.copy(alpha = 0.42f + 0.58f * electricPulse)
+        enableAnimations && isOutage -> accent.copy(alpha = 0.16f + 0.24f * (1f - electricPulse))
+        else -> accent.copy(alpha = 0.35f)
+    }
+
+    val haloBrush = when {
+        enableAnimations && isService -> Brush.radialGradient(
+            colors = listOf(
+                accent.copy(alpha = 0.36f * electricPulse),
+                container
+            )
+        )
+        enableAnimations && isOutage -> Brush.radialGradient(
+            colors = listOf(
+                Color.Black.copy(alpha = 0.16f * electricPulse),
+                container.copy(alpha = 0.72f)
+            )
+        )
+        else -> Brush.linearGradient(listOf(container, container))
+    }
+
+    val iconScale = when {
+        !enableAnimations -> 1f
+        isService -> 0.94f + 0.14f * electricPulse
+        isOutage -> 0.92f + 0.05f * (1f - electricPulse)
+        else -> 1f
+    }
+
+    val iconAlpha = when {
+        !enableAnimations -> 1f
+        isService -> 0.85f + 0.15f * electricPulse
+        isOutage -> 0.55f + 0.28f * (1f - electricPulse)
+        else -> 1f
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Transparent,
+        border = BorderStroke(if (enableAnimations && isService) 1.6.dp else 1.dp, borderColor),
+        modifier = Modifier.size(boxSize)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(haloBrush)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = accent,
+                modifier = Modifier
+                    .size(iconSize)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                        alpha = iconAlpha
+                    }
+            )
         }
     }
 }

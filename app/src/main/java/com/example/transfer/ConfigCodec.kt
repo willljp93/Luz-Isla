@@ -8,6 +8,7 @@ import com.example.domain.model.ManualException
 import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
+import com.example.domain.version.AppVersionConfig
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -21,6 +22,7 @@ import java.util.zip.Inflater
 data class LuzIslaConfigPayload(
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
     val configVersion: Int = 1,
+    val configVersionName: String = "",
     val generatedAtIso: String = "",
     val sourceName: String = "Luz Isla",
     val includesPersonalData: Boolean = false,
@@ -33,6 +35,13 @@ data class LuzIslaConfigPayload(
     val cycles: List<RotationCycle> = emptyList(),
     val sha256: String = ""
 ) {
+    fun displayVersion(fallbackMillis: Long = 0L): String =
+        AppVersionConfig.formatConfigVersionDisplay(
+            numericVersion = configVersion,
+            versionName = configVersionName,
+            fallbackTimestampMillis = fallbackMillis
+        )
+
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
     }
@@ -46,6 +55,7 @@ data class DecodedConfigResult(
 
 data class ImportSummary(
     val configVersion: Int,
+    val configVersionName: String = "",
     val sourceName: String,
     val generatedAtIso: String,
     val includesPersonalData: Boolean,
@@ -57,7 +67,14 @@ data class ImportSummary(
     val exceptionCount: Int,
     val relationCount: Int,
     val sha256Verified: Boolean
-)
+) {
+    val displayVersion: String
+        get() = AppVersionConfig.formatConfigVersionDisplay(
+            numericVersion = configVersion,
+            versionName = configVersionName,
+            fallbackTimestampMillis = ConfigCodec.parseGeneratedAtMillis(generatedAtIso) ?: 0L
+        )
+}
 
 object ConfigCodec {
     const val CODE_PREFIX = "LUZ1-"
@@ -80,7 +97,8 @@ object ConfigCodec {
         configVersion: Int,
         includePersonalData: Boolean,
         sourceName: String = "Luz Isla",
-        nowIso: String = Instant.now().toString()
+        nowIso: String = Instant.now().toString(),
+        configVersionName: String = ""
     ): LuzIslaConfigPayload {
         val sanitizedCircuits = snapshot.circuits.map { circuit ->
             if (includePersonalData) {
@@ -98,6 +116,7 @@ object ConfigCodec {
         val unsigned = LuzIslaConfigPayload(
             schemaVersion = LuzIslaConfigPayload.CURRENT_SCHEMA_VERSION,
             configVersion = configVersion,
+            configVersionName = configVersionName,
             generatedAtIso = nowIso,
             sourceName = sourceName,
             includesPersonalData = includePersonalData,
@@ -222,6 +241,7 @@ object ConfigCodec {
         val p = decoded.payload
         return ImportSummary(
             configVersion = p.configVersion,
+            configVersionName = p.configVersionName,
             sourceName = p.sourceName.ifBlank { "Configuración compartida" },
             generatedAtIso = p.generatedAtIso,
             includesPersonalData = p.includesPersonalData,
