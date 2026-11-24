@@ -1,46 +1,68 @@
 package com.example.data.local
 
 import com.example.domain.engine.ScheduleEngine
-import com.example.domain.model.IntervalKind
-import com.example.domain.model.RelationType
 import com.example.domain.model.ScheduleType
 import java.time.LocalDate
 
 object SeedDataProvider {
 
+    private data class SeedCircuitSpec(
+        val code: String,
+        val customName: String = "",
+        val comment: String = "",
+        val groupId: String? = null,
+        val scheduleType: ScheduleType
+    )
+
+    private fun referenceEpochMillis(): Long =
+        LocalDate.of(2026, 11, 22)
+            .atTime(12, 0)
+            .atZone(ScheduleEngine.HAVANA_ZONE)
+            .toInstant()
+            .toEpochMilli()
+
     fun initialCircuits(nowMillis: Long): List<CircuitEntity> {
-        val fixedCodes = setOf("A030", "A230", "A020")
-        val raw = listOf(
-            Triple("A386", "Sierra Caballo", "Zona del Polígono"),
-            Triple("A070", "", ""),
-            Triple("A133", "", ""),
-            Triple("A090", "", ""),
-            Triple("A220", "", ""),
-            Triple("A177", "Chacón", "Reparto Chacón"),
-            Triple("A888", "", "Anteriormente A147"),
-            Triple("A210", "", ""),
-            Triple("A050", "", ""),
-            Triple("A010", "", ""),
-            Triple("A310", "", ""),
-            Triple("A330", "", ""),
-            Triple("A340", "", ""),
-            Triple("A060", "", ""),
-            Triple("A040", "", ""),
-            Triple("A080", "", ""),
-            Triple("A030", "", "Horario fijo diario 09:00 AM - 05:00 PM"),
-            Triple("A230", "", "Horario fijo diario 09:00 AM - 05:00 PM"),
-            Triple("A020", "", "Horario fijo diario 08:00 AM - 05:00 PM")
+        val specs = listOf(
+            // G1 (0h): A-888, A-220, A-480, A-177
+            SeedCircuitSpec("A888", comment = "Anteriormente A147", groupId = "grp_g1", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A220", groupId = "grp_g1", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A480", comment = "Referenciado en G1 y G3", groupId = "grp_g1", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A177", customName = "Chacón", comment = "Reparto Chacón", groupId = "grp_g1", scheduleType = ScheduleType.ROTATING),
+
+            // G2 (+4h): A-060, A-090, A-040
+            SeedCircuitSpec("A060", groupId = "grp_g2", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A090", groupId = "grp_g2", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A040", groupId = "grp_g2", scheduleType = ScheduleType.ROTATING),
+
+            // G3 (+8h): A-070, A-080, A-133, A-480 (ya asignado en G1), A-386
+            SeedCircuitSpec("A070", groupId = "grp_g3", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A080", groupId = "grp_g3", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A133", groupId = "grp_g3", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A386", customName = "Sierra Caballo", comment = "Zona del Polígono", groupId = "grp_g3", scheduleType = ScheduleType.ROTATING),
+
+            // G4 (+12h): A-050, A-210, A-310, 3040, 3042
+            SeedCircuitSpec("A050", groupId = "grp_g4", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A210", groupId = "grp_g4", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("A310", groupId = "grp_g4", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("3040", groupId = "grp_g4", scheduleType = ScheduleType.ROTATING),
+            SeedCircuitSpec("3042", groupId = "grp_g4", scheduleType = ScheduleType.ROTATING),
+
+            // Horario fijo
+            SeedCircuitSpec("A030", comment = "Fijo 1 · Diario 09:00–17:00", groupId = null, scheduleType = ScheduleType.FIXED),
+            SeedCircuitSpec("A230", comment = "Fijo 1 · Diario 09:00–17:00", groupId = null, scheduleType = ScheduleType.FIXED),
+            SeedCircuitSpec("A020", comment = "Fijo 2 · Diario 08:00–17:00", groupId = null, scheduleType = ScheduleType.FIXED)
         )
-        return raw.mapIndexed { index, (code, name, comment) ->
+
+        return specs.mapIndexed { index, spec ->
             CircuitEntity(
-                code = code,
-                customName = name,
-                comment = comment,
-                groupId = null,
-                scheduleType = if (code in fixedCodes) ScheduleType.FIXED.name else ScheduleType.CUSTOM.name,
+                code = spec.code,
+                customName = spec.customName,
+                comment = spec.comment,
+                groupId = spec.groupId,
+                scheduleType = spec.scheduleType.name,
                 isActive = true,
-                isFavorite = code == "A210" || code == "A386",
-                isPrimaryHome = code == "A210",
+                isFavorite = spec.code == "A210" || spec.code == "A386",
+                isPrimaryHome = spec.code == "A210",
                 displayOrder = index,
                 createdAt = nowMillis,
                 updatedAt = nowMillis
@@ -55,7 +77,7 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 9 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Horario fijo diario 09:00 AM - 05:00 PM"
+            label = "Fijo 1 · Diario 09:00–17:00"
         ),
         FixedScheduleRuleEntity(
             id = "fixed_a230",
@@ -63,7 +85,7 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 9 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Horario fijo diario 09:00 AM - 05:00 PM"
+            label = "Fijo 1 · Diario 09:00–17:00"
         ),
         FixedScheduleRuleEntity(
             id = "fixed_a020",
@@ -71,20 +93,17 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 8 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Horario fijo diario 08:00 AM - 05:00 PM"
+            label = "Fijo 2 · Diario 08:00–17:00"
         )
     )
 
     fun initialGroups(): List<ScheduleGroupEntity> {
-        val baseRef = LocalDate.of(2026, 11, 19)
-            .atStartOfDay(ScheduleEngine.HAVANA_ZONE)
-            .toInstant()
-            .toEpochMilli()
+        val baseRef = referenceEpochMillis()
         return listOf(
             ScheduleGroupEntity(
-                id = "grp_ejemplo_1",
-                name = "Grupo 1 (Plantilla 4h/12h)",
-                description = "Plantilla editable de ejemplo: 4h con servicio y 12h sin servicio (base 00:00).",
+                id = "grp_g1",
+                name = "G1",
+                description = "Ciclo 12×4 · Ref 22/11/2026: sin servicio 00:00–12:00, servicio 12:00 (desfase 0 h).",
                 serviceDurationMinutes = 240,
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
@@ -92,9 +111,9 @@ object SeedDataProvider {
                 isActive = true
             ),
             ScheduleGroupEntity(
-                id = "grp_ejemplo_2",
-                name = "Grupo 2 (Plantilla 4h/12h)",
-                description = "Plantilla editable de ejemplo: desplazado +4h respecto al Grupo 1.",
+                id = "grp_g2",
+                name = "G2",
+                description = "Ciclo 12×4 · Ref 22/11/2026: sin servicio 04:00–16:00, servicio 16:00 (desfase +4 h).",
                 serviceDurationMinutes = 240,
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
@@ -102,178 +121,45 @@ object SeedDataProvider {
                 isActive = true
             ),
             ScheduleGroupEntity(
-                id = "grp_ejemplo_3",
-                name = "Grupo 3 (Plantilla 4h/12h)",
-                description = "Plantilla editable de ejemplo: desplazado +8h respecto al Grupo 1.",
+                id = "grp_g3",
+                name = "G3",
+                description = "Ciclo 12×4 · Ref 22/11/2026: sin servicio 08:00–20:00, servicio 20:00 (desfase +8 h).",
                 serviceDurationMinutes = 240,
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 phaseOffsetMinutes = 480,
+                isActive = true
+            ),
+            ScheduleGroupEntity(
+                id = "grp_g4",
+                name = "G4",
+                description = "Ciclo 12×4 · Ref 22/11/2026: sin servicio 12:00–00:00, servicio 00:00 día siguiente (desfase +12 h).",
+                serviceDurationMinutes = 240,
+                outageDurationMinutes = 720,
+                referenceEpochMillis = baseRef,
+                phaseOffsetMinutes = 720,
                 isActive = true
             )
         )
     }
 
     fun initialCycles(): List<RotationCycleEntity> {
-        val baseRef = LocalDate.of(2026, 11, 19)
-            .atStartOfDay(ScheduleEngine.HAVANA_ZONE)
-            .toInstant()
-            .toEpochMilli()
+        val baseRef = referenceEpochMillis()
         return listOf(
             RotationCycleEntity(
-                id = "cycle_ejemplo_4_12",
-                name = "Ciclo 4h servicio / 12h afectación",
-                description = "Plantilla rotativa de ejemplo (admite hasta 4 grupos secuenciales cada 4h).",
+                id = "cycle_12x4",
+                name = "Ciclo 12 × 4",
+                description = "4 grupos rotativos (12h sin servicio / 4h con servicio, desfase +4h desde G1, ref. 22 nov 2026).",
                 serviceDurationMinutes = 240,
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
-                orderedGroupIdsCsv = "grp_ejemplo_1,grp_ejemplo_2,grp_ejemplo_3",
+                orderedGroupIdsCsv = "grp_g1,grp_g2,grp_g3,grp_g4",
                 isActive = true
             )
         )
     }
 
-    fun initialRelations(): List<CircuitRelationEntity> = listOf(
-        CircuitRelationEntity(
-            id = "rel_a080_a060",
-            sourceCircuitCode = "A080",
-            targetCircuitCode = "A060",
-            relationType = RelationType.INFORMATIVA.name,
-            syncRuleEnabled = false,
-            notes = "El circuito A080 se afecta cuando el A060 tiene servicio."
-        )
-    )
+    fun initialRelations(): List<CircuitRelationEntity> = emptyList()
 
-    /**
-     * Datos históricos de prueba (19 y 20 de noviembre de 2026) para validar
-     * la introducción manual de pronósticos por fecha. No representan una
-     * programación vigente ni ciclos rotativos permanentes.
-     */
-    fun initialHistoricalTestForecasts(): List<ExplicitForecastEntity> {
-        val nov19 = LocalDate.of(2026, 11, 19).toEpochDay()
-        val nov20 = LocalDate.of(2026, 11, 20).toEpochDay()
-        val note = "Dato histórico de prueba (19-20 nov 2026). Solo referencia de validación manual."
-        return listOf(
-            ExplicitForecastEntity(
-                id = "hist_20261119_b1",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 0,
-                endMinuteOfDay = 4 * 60,
-                circuitCodesCsv = "A386,A070,A133,A090,A220",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261119_b2",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 4 * 60,
-                endMinuteOfDay = 8 * 60,
-                circuitCodesCsv = "A177,A888,A210,A050,A010",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261119_b3",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 8 * 60,
-                endMinuteOfDay = 12 * 60,
-                circuitCodesCsv = "A310,A330,A340,A060,A040",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261119_b4",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 12 * 60,
-                endMinuteOfDay = 16 * 60,
-                circuitCodesCsv = "A386,A070,A133,A090,A220",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261119_b5",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 16 * 60,
-                endMinuteOfDay = 20 * 60,
-                circuitCodesCsv = "A177,A888,A210,A050,A010",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261119_b6",
-                dateEpochDay = nov19,
-                startMinuteOfDay = 20 * 60,
-                endMinuteOfDay = 24 * 60,
-                circuitCodesCsv = "A310,A330,A340,A060,A040",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b1",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 0,
-                endMinuteOfDay = 4 * 60,
-                circuitCodesCsv = "A386,A070,A133,A090,A220",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b2",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 4 * 60,
-                endMinuteOfDay = 8 * 60,
-                circuitCodesCsv = "A177,A888,A210,A050,A010",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b3",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 8 * 60,
-                endMinuteOfDay = 12 * 60,
-                circuitCodesCsv = "A310,A330,A340,A060,A040",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b4",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 12 * 60,
-                endMinuteOfDay = 16 * 60,
-                circuitCodesCsv = "A386,A070,A133,A090,A220",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b5",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 16 * 60,
-                endMinuteOfDay = 20 * 60,
-                circuitCodesCsv = "A177,A888,A210,A050,A010",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            ),
-            ExplicitForecastEntity(
-                id = "hist_20261120_b6",
-                dateEpochDay = nov20,
-                startMinuteOfDay = 20 * 60,
-                endMinuteOfDay = 24 * 60,
-                circuitCodesCsv = "A310,A330,A340,A060,A040",
-                intervalKind = IntervalKind.SERVICE.name,
-                notes = note,
-                isHistoricalTest = true
-            )
-        )
-    }
+    fun initialHistoricalTestForecasts(): List<ExplicitForecastEntity> = emptyList()
 }

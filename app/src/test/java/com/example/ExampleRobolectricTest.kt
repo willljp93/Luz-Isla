@@ -55,7 +55,56 @@ class ExampleRobolectricTest {
         AppDatabase.seedIfEmpty(db)
         val initial = repository.getCurrentSnapshot()
         assertEquals(19, initial.circuits.size)
-        assertTrue(initial.cycles.isNotEmpty())
+        assertEquals(4, initial.groups.size)
+        assertEquals(1, initial.cycles.size)
+        assertEquals(3, initial.fixedRules.size)
+        assertTrue(initial.explicitForecasts.isEmpty())
+
+        val circuitsByCode = initial.circuits.associateBy { it.code }
+        assertEquals("grp_g1", circuitsByCode["A888"]?.groupId)
+        assertEquals("grp_g1", circuitsByCode["A480"]?.groupId)
+        assertEquals("grp_g2", circuitsByCode["A060"]?.groupId)
+        assertEquals("grp_g3", circuitsByCode["A386"]?.groupId)
+        assertEquals("grp_g4", circuitsByCode["3040"]?.groupId)
+        assertEquals("grp_g4", circuitsByCode["3042"]?.groupId)
+        assertEquals(ScheduleType.FIXED, circuitsByCode["A030"]?.scheduleType)
+        assertEquals(ScheduleType.FIXED, circuitsByCode["A230"]?.scheduleType)
+        assertEquals(ScheduleType.FIXED, circuitsByCode["A020"]?.scheduleType)
+
+        // Verify Nov 22, 2026 12x4 rotation timing:
+        // G1 outage 00:00-12:00 -> service starts 12:00
+        // G2 outage 04:00-16:00 -> service starts 16:00
+        // G3 outage 08:00-20:00 -> service starts 20:00
+        // G4 outage 12:00-00:00 -> service starts 00:00 (Nov 23)
+        val nov22 = java.time.LocalDate.of(2026, 11, 22)
+        val havana = com.example.domain.engine.ScheduleEngine.HAVANA_ZONE
+        fun atHavana(hour: Int, minute: Int = 0, date: java.time.LocalDate = nov22): java.time.Instant =
+            date.atTime(hour, minute).atZone(havana).toInstant()
+
+        val g1EvalAt11 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A888"), initial, atHavana(11, 0))
+        val g1EvalAt12 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A888"), initial, atHavana(12, 5))
+        assertEquals(com.example.domain.model.ScheduledState.OUTAGE_SCHEDULED, g1EvalAt11.state)
+        assertEquals(com.example.domain.model.ScheduledState.SERVICE_SCHEDULED, g1EvalAt12.state)
+
+        val g2EvalAt15 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A060"), initial, atHavana(15, 0))
+        val g2EvalAt16 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A060"), initial, atHavana(16, 5))
+        assertEquals(com.example.domain.model.ScheduledState.OUTAGE_SCHEDULED, g2EvalAt15.state)
+        assertEquals(com.example.domain.model.ScheduledState.SERVICE_SCHEDULED, g2EvalAt16.state)
+
+        val g3EvalAt19 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A070"), initial, atHavana(19, 0))
+        val g3EvalAt20 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A070"), initial, atHavana(20, 5))
+        assertEquals(com.example.domain.model.ScheduledState.OUTAGE_SCHEDULED, g3EvalAt19.state)
+        assertEquals(com.example.domain.model.ScheduledState.SERVICE_SCHEDULED, g3EvalAt20.state)
+
+        val g4EvalAt23 = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("3040"), initial, atHavana(23, 0))
+        val g4EvalAt00Next = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("3040"), initial, atHavana(0, 5, nov22.plusDays(1)))
+        assertEquals(com.example.domain.model.ScheduledState.OUTAGE_SCHEDULED, g4EvalAt23.state)
+        assertEquals(com.example.domain.model.ScheduledState.SERVICE_SCHEDULED, g4EvalAt00Next.state)
+
+        val a020Eval = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A020"), initial, atHavana(8, 30))
+        assertEquals(com.example.domain.model.ScheduledState.SERVICE_SCHEDULED, a020Eval.state)
+        val a030Before = com.example.domain.engine.ScheduleEngine.evaluateCircuit(circuitsByCode.getValue("A030"), initial, atHavana(8, 30))
+        assertEquals(com.example.domain.model.ScheduledState.OUTAGE_SCHEDULED, a030Before.state)
 
         val existingA210 = initial.circuits.first { it.code == "A210" }
         repository.upsertCircuit(

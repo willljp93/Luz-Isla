@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
         ConfigBackupEntity::class,
         RotationCycleEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -58,6 +58,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DELETE FROM `schedule_groups` WHERE `id` LIKE 'grp_ejemplo_%'")
+                db.execSQL("DELETE FROM `rotation_cycles` WHERE `id` = 'cycle_ejemplo_4_12'")
+                db.execSQL("DELETE FROM `explicit_forecasts` WHERE `isHistoricalTest` = 1")
+                db.execSQL("DELETE FROM `circuit_relations` WHERE `id` = 'rel_a080_a060'")
+                db.execSQL("DELETE FROM `circuits` WHERE `code` IN ('A010', 'A330', 'A340')")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: buildDatabase(context.applicationContext).also { INSTANCE = it }
@@ -70,7 +80,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "luz_isla.db"
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -83,21 +93,41 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         suspend fun seedIfEmpty(database: AppDatabase) {
-            if (database.circuitDao().getAllOnce().isNotEmpty()) {
-                if (database.rotationCycleDao().getAllOnce().isEmpty() &&
-                    database.scheduleGroupDao().getAllOnce().any { it.id.startsWith("grp_ejemplo_") }
-                ) {
-                    database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
-                }
+            val now = System.currentTimeMillis()
+            val existingCircuits = database.circuitDao().getAllOnce()
+            if (existingCircuits.isEmpty()) {
+                database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
+                database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
+                database.circuitDao().upsertAll(SeedDataProvider.initialCircuits(now))
+                database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
                 return
             }
-            val now = System.currentTimeMillis()
-            database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
-            database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
-            database.circuitDao().upsertAll(SeedDataProvider.initialCircuits(now))
-            database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
-            database.circuitRelationDao().upsertAll(SeedDataProvider.initialRelations())
-            database.explicitForecastDao().upsertAll(SeedDataProvider.initialHistoricalTestForecasts())
+
+            val hasCurrentGroups = database.scheduleGroupDao().getAllOnce().any { it.id == "grp_g1" }
+            val hasCurrentCycle = database.rotationCycleDao().getAllOnce().any { it.id == "cycle_12x4" }
+            if (!hasCurrentGroups && !hasCurrentCycle) {
+                val existingByCode = existingCircuits.associateBy { it.code.uppercase() }
+                val mergedCircuits = SeedDataProvider.initialCircuits(now).map { seed ->
+                    val local = existingByCode[seed.code.uppercase()]
+                    if (local != null) {
+                        seed.copy(
+                            customName = local.customName.ifBlank { seed.customName },
+                            comment = local.comment.ifBlank { seed.comment },
+                            isActive = local.isActive,
+                            isFavorite = local.isFavorite,
+                            isPrimaryHome = local.isPrimaryHome,
+                            createdAt = local.createdAt.takeIf { it > 0L } ?: now,
+                            updatedAt = now
+                        )
+                    } else {
+                        seed
+                    }
+                }
+                database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
+                database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
+                database.circuitDao().upsertAll(mergedCircuits)
+                database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
+            }
         }
     }
 }
