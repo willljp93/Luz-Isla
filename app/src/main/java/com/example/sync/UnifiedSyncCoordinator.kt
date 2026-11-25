@@ -40,9 +40,13 @@ class UnifiedSyncCoordinator(
                         forecastUpdated = true
                         ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
                         WidgetUpdateHelper.refreshAllWidgets(appContext)
-                        "Actualizado (v${outcome.version})"
+                        val label = outcome.versionName.ifBlank { outcome.version.toString() }
+                        "Actualizado (v$label)"
                     }
-                    is SyncOutcome.UpToDate -> "Al día (v${outcome.version})"
+                    is SyncOutcome.UpToDate -> {
+                        val label = outcome.versionName.ifBlank { "v${outcome.version}" }
+                        "Al día ($label)"
+                    }
                     is SyncOutcome.Failure -> "Sin conexión"
                 }
             }

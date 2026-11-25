@@ -15,9 +15,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PowerOff
@@ -70,6 +70,7 @@ fun CircuitDetailBottomSheet(
     sunriseMinutes: Int = 6 * 60 + 30,
     sunsetMinutes: Int = 18 * 60 + 30,
     enableElectricAnimations: Boolean = true,
+    centerTimelineOnNow: Boolean = false,
     onDismiss: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onSetPrimaryHome: (String) -> Unit,
@@ -82,9 +83,36 @@ fun CircuitDetailBottomSheet(
     val today = remember(nowMillis, zoneId) {
         Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
     }
-    var selectedSegment by remember(evaluation.circuit.code) {
+    val windowStartMillis = remember(nowMillis, centerTimelineOnNow) {
+        if (centerTimelineOnNow) nowMillis - 12L * 60L * 60L * 1000L else null
+    }
+    val windowEndMillis = remember(nowMillis, centerTimelineOnNow) {
+        if (centerTimelineOnNow) nowMillis + 12L * 60L * 60L * 1000L else null
+    }
+    val displayedTodaySegments = remember(
+        circuit.code,
+        snapshot,
+        centerTimelineOnNow,
+        windowStartMillis,
+        windowEndMillis,
+        evaluation.todaySegments,
+        zoneId
+    ) {
+        if (centerTimelineOnNow && windowStartMillis != null && windowEndMillis != null) {
+            ScheduleEngine.buildTimelineForRange(
+                circuitCode = circuit.code,
+                snapshot = snapshot,
+                rangeStartMillis = windowStartMillis,
+                rangeEndMillis = windowEndMillis,
+                zoneId = zoneId
+            )
+        } else {
+            evaluation.todaySegments
+        }
+    }
+    var selectedSegment by remember(evaluation.circuit.code, centerTimelineOnNow) {
         mutableStateOf<TimelineSegment?>(
-            evaluation.todaySegments.firstOrNull { nowMillis >= it.startMillis && nowMillis < it.endMillis }
+            displayedTodaySegments.firstOrNull { nowMillis >= it.startMillis && nowMillis < it.endMillis }
         )
     }
     val next7Days = remember(circuit.code, snapshot, today, zoneId) {
@@ -107,7 +135,7 @@ fun CircuitDetailBottomSheet(
         ScheduledState.UNKNOWN -> DetailVisual(
             statusColors.unknown,
             statusColors.unknownContainer,
-            Icons.Filled.HelpOutline,
+            Icons.AutoMirrored.Filled.HelpOutline,
             "Sin información disponible"
         )
     }
@@ -352,14 +380,16 @@ fun CircuitDetailBottomSheet(
 
             // Today's 24h bar timeline
             Text(
-                text = "Resumen de hoy (24h)",
+                text = if (centerTimelineOnNow) "Ventana actual (±12h)" else "Resumen de hoy (24h)",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
             Timeline24hBar(
                 date = today,
-                segments = evaluation.todaySegments,
+                segments = displayedTodaySegments,
                 currentTimeMillis = nowMillis,
+                windowStartMillis = windowStartMillis,
+                windowEndMillis = windowEndMillis,
                 selectedSegment = selectedSegment,
                 use24h = use24h,
                 zoneId = zoneId,
@@ -370,7 +400,7 @@ fun CircuitDetailBottomSheet(
             )
             TimelineSegmentLegend()
             TimelineIntervalsSummaryList(
-                segments = evaluation.todaySegments,
+                segments = displayedTodaySegments,
                 selectedSegment = selectedSegment,
                 use24h = use24h,
                 zoneId = zoneId,

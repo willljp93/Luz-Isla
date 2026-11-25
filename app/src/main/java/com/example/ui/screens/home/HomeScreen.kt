@@ -9,7 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,12 +23,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PowerOff
@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.ViewAgenda
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,6 +70,7 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.CircuitStatusEvaluation
 import com.example.domain.model.ScheduledState
 import com.example.domain.version.AppVersionConfig
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.CircuitDetailBottomSheet
 import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.DayNightAmbientScreenBrush
@@ -349,7 +349,7 @@ fun HomeScreen(
                             modifier = Modifier.testTag("home_compact_toggle")
                         ) {
                             Icon(
-                                imageVector = if (state.compactMode) Icons.Filled.ViewAgenda else Icons.Filled.ViewList,
+                                imageVector = if (state.compactMode) Icons.Filled.ViewAgenda else Icons.AutoMirrored.Filled.ViewList,
                                 contentDescription = if (state.compactMode) "Vista en tarjetas" else "Vista compacta",
                                 modifier = Modifier.size(20.dp)
                             )
@@ -359,17 +359,36 @@ fun HomeScreen(
             }
 
             item(key = "filter_chips") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HomeFilter.entries.forEach { filter ->
+                val visibleFilters = HomeFilter.entries.filter { filter ->
+                    val count = when (filter) {
+                        HomeFilter.ALL -> 1
+                        HomeFilter.FAVORITES -> state.totalFavoritesCount
+                        HomeFilter.WITH_SERVICE -> state.totalServiceCount
+                        HomeFilter.OUTAGE -> state.totalOutageCount
+                        HomeFilter.UNKNOWN -> state.totalUnknownCount
+                    }
+                    filter == HomeFilter.ALL || state.selectedFilter == filter || count > 0
+                }
+                CenteredScrollableChipRow {
+                    visibleFilters.forEach { filter ->
+                        val icon = when (filter) {
+                            HomeFilter.ALL -> Icons.Filled.Apps
+                            HomeFilter.FAVORITES -> Icons.Filled.Star
+                            HomeFilter.WITH_SERVICE -> Icons.Filled.Bolt
+                            HomeFilter.OUTAGE -> Icons.Filled.PowerOff
+                            HomeFilter.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
+                        }
                         FilterChip(
                             selected = state.selectedFilter == filter,
                             onClick = { viewModel.selectFilter(filter) },
-                            label = { Text(filter.label) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text(filter.label, maxLines = 1, softWrap = false) },
                             modifier = Modifier.testTag("home_filter_${filter.name.lowercase()}")
                         )
                     }
@@ -389,7 +408,7 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                Icons.Filled.HelpOutline,
+                                Icons.AutoMirrored.Filled.HelpOutline,
                                 contentDescription = null,
                                 modifier = Modifier.size(40.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -462,6 +481,7 @@ fun HomeScreen(
             sunriseMinutes = state.sunriseMinutes,
             sunsetMinutes = state.sunsetMinutes,
             enableElectricAnimations = state.enableElectricAnimations,
+            centerTimelineOnNow = state.centerTimelineOnNow,
             onDismiss = viewModel::closeCircuitDetail,
             onToggleFavorite = viewModel::toggleFavorite,
             onSetPrimaryHome = viewModel::setPrimaryHome,
@@ -537,7 +557,7 @@ private fun RichCircuitCard(
         ScheduledState.UNKNOWN -> CardVisual(
             statusColors.unknown,
             statusColors.unknownContainer,
-            Icons.Filled.HelpOutline,
+            Icons.AutoMirrored.Filled.HelpOutline,
             "Sin información"
         )
     }
@@ -723,7 +743,7 @@ private fun CompactCircuitRow(
     val (accent, container, icon) = when (eval.state) {
         ScheduledState.SERVICE_SCHEDULED -> Triple(statusColors.service, statusColors.serviceContainer, Icons.Filled.Bolt)
         ScheduledState.OUTAGE_SCHEDULED -> Triple(statusColors.outage, statusColors.outageContainer, Icons.Filled.PowerOff)
-        ScheduledState.UNKNOWN -> Triple(statusColors.unknown, statusColors.unknownContainer, Icons.Filled.HelpOutline)
+        ScheduledState.UNKNOWN -> Triple(statusColors.unknown, statusColors.unknownContainer, Icons.AutoMirrored.Filled.HelpOutline)
     }
     val statusShort = when (eval.state) {
         ScheduledState.SERVICE_SCHEDULED -> "Con servicio"

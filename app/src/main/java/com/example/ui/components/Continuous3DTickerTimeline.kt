@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -83,6 +84,8 @@ fun Continuous3DTickerTimeline(
     zoneId: ZoneId,
     modifier: Modifier = Modifier,
     initialFocusMillis: Long = nowMillis,
+    targetDate: LocalDate? = null,
+    onFocusedDateChanged: ((LocalDate) -> Unit)? = null,
     onSegmentFocused: ((TimelineSegment) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
@@ -96,7 +99,39 @@ fun Continuous3DTickerTimeline(
         anchorMillis + (offsetHoursAnim.value.toDouble() * MILLIS_PER_HOUR).roundToLong()
     }
 
-    // Fetch a 72h window around centerMillis so both front and back ring arcs render seamlessly
+    val centerZdt = remember(centerMillis, zoneId) {
+        Instant.ofEpochMilli(centerMillis).atZone(zoneId)
+    }
+    val todayDate = remember(nowMillis, zoneId) {
+        Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+    }
+    val centerDate = centerZdt.toLocalDate()
+    var lastReportedDate by remember(circuitCode) { mutableStateOf(centerDate) }
+
+    LaunchedEffect(centerDate) {
+        if (lastReportedDate != centerDate) {
+            lastReportedDate = centerDate
+            onFocusedDateChanged?.invoke(centerDate)
+        }
+    }
+
+    LaunchedEffect(targetDate, circuitCode) {
+        if (targetDate != null && targetDate != lastReportedDate && targetDate != centerDate) {
+            lastReportedDate = targetDate
+            val desiredMillis = if (targetDate == todayDate) {
+                nowMillis
+            } else {
+                targetDate.atTime(centerZdt.toLocalTime()).atZone(zoneId).toInstant().toEpochMilli()
+            }
+            val desiredOffsetHours = ((desiredMillis - anchorMillis).toDouble() / MILLIS_PER_HOUR).toFloat()
+            offsetHoursAnim.animateTo(
+                targetValue = desiredOffsetHours,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            )
+        }
+    }
+
+    // Fetch a 96h window around centerMillis so both front and back ring arcs render seamlessly
     val centerBucketHour = centerMillis / (4 * MILLIS_PER_HOUR)
     val segments = remember(circuitCode, snapshot, centerBucketHour, zoneId) {
         val spanMillis = 48L * MILLIS_PER_HOUR
@@ -120,12 +155,6 @@ fun Continuous3DTickerTimeline(
     }
 
     val isNearNow = abs(centerMillis - nowMillis) < 90_000L
-    val centerZdt = remember(centerMillis, zoneId) {
-        Instant.ofEpochMilli(centerMillis).atZone(zoneId)
-    }
-    val todayDate = remember(nowMillis, zoneId) {
-        Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
-    }
     val pillLabel = remember(centerMillis, isNearNow, use24h, zoneId, todayDate) {
         val timeText = ScheduleEngine.formatTime(centerMillis, use24h, zoneId)
         if (isNearNow) {
@@ -136,7 +165,7 @@ fun Continuous3DTickerTimeline(
                 todayDate -> "Hoy"
                 todayDate.minusDays(1) -> "Ayer"
                 todayDate.plusDays(1) -> "Mañana"
-                else -> d.format(DateTimeFormatter.ofPattern("EEE dd/MM", Locale("es", "CU")))
+                else -> d.format(DateTimeFormatter.ofPattern("EEE dd/MM", Locale.forLanguageTag("es-CU")))
                     .replaceFirstChar { it.uppercase() }
             }
             "$dayPrefix • $timeText"
@@ -508,7 +537,7 @@ private fun DrawScope.draw3DCylindricalRing(
                 todayDate.minusDays(1) -> "Ayer (${day.dayOfMonth}/${day.monthValue})"
                 todayDate.plusDays(1) -> "Mañana (${day.dayOfMonth}/${day.monthValue})"
                 else -> {
-                    val dow = day.format(DateTimeFormatter.ofPattern("EEE dd/MM", Locale("es", "CU")))
+                    val dow = day.format(DateTimeFormatter.ofPattern("EEE dd/MM", Locale.forLanguageTag("es-CU")))
                         .replaceFirstChar { it.uppercase() }
                     dow
                 }
@@ -538,12 +567,12 @@ private fun DrawScope.draw3DCylindricalRing(
                     String.format(Locale.US, "%02d", hr)
                 } else {
                     when (hr) {
-                        0 -> "12a"
-                        4 -> "4a"
-                        8 -> "8a"
-                        12 -> "12p"
-                        16 -> "4p"
-                        else -> "8p"
+                        0 -> "12am"
+                        4 -> "4am"
+                        8 -> "8am"
+                        12 -> "12pm"
+                        16 -> "4pm"
+                        else -> "8pm"
                     }
                 }
                 val alpha = (cosT * 0.92).toFloat().coerceIn(0.15f, 0.95f)

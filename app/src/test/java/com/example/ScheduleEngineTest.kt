@@ -260,6 +260,78 @@ class ScheduleEngineTest {
         assertFalse(noonHavana12.contains(' '))
         assertTrue(noonHavana12.contains('\u00A0'))
     }
+
+    @Test
+    fun `multi-day manual exception single record overrides schedule across entire date range`() {
+        val startDate = LocalDate.of(2026, 11, 24)
+        val midDate = LocalDate.of(2026, 11, 25)
+        val endDate = LocalDate.of(2026, 11, 26)
+        val afterDate = LocalDate.of(2026, 11, 27)
+
+        val circuit = Circuit("A030", scheduleType = ScheduleType.FIXED)
+        val fixed = FixedScheduleRule("f1", "A030", 0b1111111, 9 * 60, 17 * 60)
+        val rangeException = ManualException(
+            id = "ex_range",
+            circuitCode = "A030",
+            dateEpochDay = startDate.toEpochDay(),
+            endDateEpochDay = endDate.toEpochDay(),
+            startMinuteOfDay = 10 * 60,
+            endMinuteOfDay = 14 * 60,
+            hasService = false,
+            reason = "Mantenimiento programado 3 días"
+        )
+        val snapshot = ScheduleSnapshot(listOf(circuit), emptyList(), listOf(fixed), emptyList(), listOf(rangeException), emptyList())
+
+        listOf(startDate, midDate, endDate).forEach { day ->
+            val eval = ScheduleEngine.evaluateCircuit(circuit, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(day, 12, 0)))
+            assertEquals(ScheduledState.OUTAGE_SCHEDULED, eval.state)
+            assertEquals(RuleSource.MANUAL_EXCEPTION, eval.ruleSource)
+        }
+
+        val evalAfter = ScheduleEngine.evaluateCircuit(circuit, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(afterDate, 12, 0)))
+        assertEquals(ScheduledState.SERVICE_SCHEDULED, evalAfter.state)
+        assertEquals(RuleSource.FIXED_RULE, evalAfter.ruleSource)
+    }
+
+    @Test
+    fun `synchronized relation overrides rotating group and fixed rules while manual exception wins`() {
+        val date = LocalDate.of(2026, 11, 24)
+        val group = ScheduleGroup(
+            id = "g1",
+            name = "G1",
+            serviceDurationMinutes = 240,
+            outageDurationMinutes = 720,
+            referenceEpochMillis = havanaMillis(date, 0, 0),
+            phaseOffsetMinutes = 0
+        )
+        val targetFixed = Circuit("A060", scheduleType = ScheduleType.FIXED)
+        val fixedRule = FixedScheduleRule("f60", "A060", 0b1111111, 8 * 60, 12 * 60)
+
+        // cRot belongs to G1 (00:00-04:00 service, 04:00-16:00 outage) AND has an active MISMO_HORARIO relation with A060
+        val cRot = Circuit("A210", groupId = "g1", scheduleType = ScheduleType.ROTATING)
+        val relSame = CircuitRelation("rel_same", "A210", "A060", RelationType.MISMO_HORARIO, syncRuleEnabled = true)
+        val manualEx = ManualException("ex_top", "A210", date.toEpochDay(), startMinuteOfDay = 9 * 60, endMinuteOfDay = 10 * 60, hasService = false, reason = "Avería")
+
+        val snapshot = ScheduleSnapshot(
+            circuits = listOf(targetFixed, cRot),
+            groups = listOf(group),
+            fixedRules = listOf(fixedRule),
+            explicitForecasts = emptyList(),
+            manualExceptions = listOf(manualEx),
+            relations = listOf(relSame)
+        )
+
+        // At 10:30, G1 would be OUTAGE, but synchronized relation copies A060's SERVICE (08:00-12:00)
+        val at1030 = ScheduleEngine.evaluateCircuit(cRot, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 10, 30)))
+        assertEquals(ScheduledState.SERVICE_SCHEDULED, at1030.state)
+        assertEquals(RuleSource.SYNCHRONIZED_RELATION, at1030.ruleSource)
+
+        // At 09:30, Manual Exception overrides the synchronized relation
+        val at0930 = ScheduleEngine.evaluateCircuit(cRot, snapshot, java.time.Instant.ofEpochMilli(havanaMillis(date, 9, 30)))
+        assertEquals(ScheduledState.OUTAGE_SCHEDULED, at0930.state)
+        assertEquals(RuleSource.MANUAL_EXCEPTION, at0930.ruleSource)
+    }
 }
+
 
 

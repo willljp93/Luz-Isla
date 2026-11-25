@@ -52,9 +52,11 @@ data class HomeUiState(
     val isDaytime: Boolean = true,
     val enableElectricAnimations: Boolean = true,
     val dynamicLauncherIconEnabled: Boolean = false,
+    val centerTimelineOnNow: Boolean = false,
     val primaryHomeState: ScheduledState? = null,
     val snapshot: ScheduleSnapshot = ScheduleSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
     val evaluations: List<CircuitStatusEvaluation> = emptyList(),
+    val totalFavoritesCount: Int = 0,
     val totalServiceCount: Int = 0,
     val totalOutageCount: Int = 0,
     val totalUnknownCount: Int = 0,
@@ -122,6 +124,7 @@ class HomeViewModel(
             .filter { it.isActive }
             .map { circuit -> ScheduleEngine.evaluateCircuit(circuit, snapshot, nowInstant, zoneId) }
 
+        val favoritesCount = activeEvaluations.count { it.circuit.isFavorite || it.circuit.isPrimaryHome }
         val serviceCount = activeEvaluations.count { it.state == ScheduledState.SERVICE_SCHEDULED }
         val outageCount = activeEvaluations.count { it.state == ScheduledState.OUTAGE_SCHEDULED }
         val unknownCount = activeEvaluations.count { it.state == ScheduledState.UNKNOWN }
@@ -183,9 +186,11 @@ class HomeViewModel(
             isDaytime = isDay,
             enableElectricAnimations = prefs.enableElectricAnimations,
             dynamicLauncherIconEnabled = prefs.dynamicLauncherIconEnabled,
+            centerTimelineOnNow = prefs.centerTimelineOnNow,
             primaryHomeState = primaryState,
             snapshot = snapshot,
             evaluations = filtered,
+            totalFavoritesCount = favoritesCount,
             totalServiceCount = serviceCount,
             totalOutageCount = outageCount,
             totalUnknownCount = unknownCount,

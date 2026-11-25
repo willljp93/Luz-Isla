@@ -380,20 +380,29 @@ object ScheduleEngine {
     ): List<TimelineSegment> {
         val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val candidates = generateRotatingCandidates(group, startMillis, endMillis)
-        return resolveCandidatesToSegments(candidates, startMillis, endMillis)
+        return getGroupTimelineForRange(group, startMillis, endMillis)
     }
 
-    private fun buildTimelineForRange(
+    fun getGroupTimelineForRange(
+        group: ScheduleGroup,
+        rangeStartMillis: Long,
+        rangeEndMillis: Long
+    ): List<TimelineSegment> {
+        if (rangeEndMillis <= rangeStartMillis) return emptyList()
+        val candidates = generateRotatingCandidates(group, rangeStartMillis, rangeEndMillis)
+        return resolveCandidatesToSegments(candidates, rangeStartMillis, rangeEndMillis)
+    }
+
+    fun buildTimelineForRange(
         circuitCode: String,
         snapshot: ScheduleSnapshot,
         rangeStartMillis: Long,
         rangeEndMillis: Long,
-        visitedCircuits: Set<String>,
-        zoneId: ZoneId
+        visitedCircuits: Set<String> = emptySet(),
+        zoneId: ZoneId = HAVANA_ZONE
     ): List<TimelineSegment> {
         if (rangeEndMillis <= rangeStartMillis) return emptyList()
-        val normalizedCode = circuitCode.trim()
+        val normalizedCode = circuitCode.trim().uppercase()
         if (normalizedCode in visitedCircuits) return emptyList()
         val nextVisited = visitedCircuits + normalizedCode
 
@@ -413,13 +422,16 @@ object ScheduleEngine {
         val startDate = Instant.ofEpochMilli(rangeStartMillis).atZone(zoneId).toLocalDate().minusDays(1)
         val endDate = Instant.ofEpochMilli(rangeEndMillis).atZone(zoneId).toLocalDate().plusDays(1)
 
-        // Priority 1: Manual Exceptions
+        // Priority 1: Manual Exceptions (single day or date range)
         snapshot.manualExceptions
             .filter { it.circuitCode.equals(circuit.code, ignoreCase = true) }
             .forEach { ex ->
-                val exDate = LocalDate.ofEpochDay(ex.dateEpochDay)
-                if (!exDate.isBefore(startDate) && !exDate.isAfter(endDate)) {
-                    val (s, e) = resolveDateMinuteSpan(exDate, ex.startMinuteOfDay, ex.endMinuteOfDay, zoneId)
+                val exStart = LocalDate.ofEpochDay(ex.dateEpochDay)
+                val exEnd = LocalDate.ofEpochDay(ex.effectiveEndEpochDay())
+                var cursor = if (exStart.isBefore(startDate)) startDate else exStart
+                val limit = if (exEnd.isAfter(endDate)) endDate else exEnd
+                while (!cursor.isAfter(limit)) {
+                    val (s, e) = resolveDateMinuteSpan(cursor, ex.startMinuteOfDay, ex.endMinuteOfDay, zoneId)
                     if (e > rangeStartMillis && s < rangeEndMillis) {
                         candidates += CandidateInterval(
                             startMillis = maxOf(s, rangeStartMillis),
@@ -432,6 +444,7 @@ object ScheduleEngine {
                             priority = 1
                         )
                     }
+                    cursor = cursor.plusDays(1)
                 }
             }
 
@@ -458,95 +471,104 @@ object ScheduleEngine {
                 }
             }
 
-        // Priority 3: Recurring schedules (Fixed, Rotating, or Synchronized Relation)
-        when (circuit.scheduleType) {
-            ScheduleType.FIXED -> {
-                val rules = snapshot.fixedRules.filter { it.circuitCode.equals(circuit.code, ignoreCase = true) }
-                if (rules.isNotEmpty()) {
-                    var cursor = startDate
-                    while (!cursor.isAfter(endDate)) {
-                        val dayIndex = cursor.dayOfWeek.toZeroBasedMondayIndex()
-                        val epochDay = cursor.toEpochDay()
-                        val matchingRules = rules.filter { rule ->
-                            val matchesDay = (rule.daysOfWeekMask and (1 shl dayIndex)) != 0
-                            val afterStart = rule.validFromEpochDay == null || epochDay >= rule.validFromEpochDay
-                            val beforeEnd = rule.validToEpochDay == null || epochDay <= rule.validToEpochDay
-                            matchesDay && afterStart && beforeEnd
-                        }
-                        if (matchingRules.isNotEmpty()) {
-                            val dayStart = cursor.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                            val dayEnd = cursor.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                            if (dayEnd > rangeStartMillis && dayStart < rangeEndMillis) {
-                                candidates += CandidateInterval(
-                                    startMillis = maxOf(dayStart, rangeStartMillis),
-                                    endMillis = minOf(dayEnd, rangeEndMillis),
-                                    state = ScheduledState.OUTAGE_SCHEDULED,
-                                    source = RuleSource.FIXED_RULE,
-                                    label = "Horario fijo: Fuera de servicio",
-                                    notes = "",
-                                    isHistoricalTest = false,
-                                    priority = 4
-                                )
+        // Priority 3: Synchronized Relation overrides rotating group / fixed rule when enabled
+        val syncRelation = snapshot.relations.firstOrNull {
+            it.sourceCircuitCode.equals(circuit.code, ignoreCase = true) &&
+                it.syncRuleEnabled &&
+                it.relationType != RelationType.INFORMATIVA
+        }
+        if (syncRelation != null) {
+            val targetSegments = buildTimelineForRange(
+                circuitCode = syncRelation.targetCircuitCode,
+                snapshot = snapshot,
+                rangeStartMillis = rangeStartMillis,
+                rangeEndMillis = rangeEndMillis,
+                visitedCircuits = nextVisited,
+                zoneId = zoneId
+            )
+            targetSegments.forEach { seg ->
+                val mappedState = mapRelationState(seg.state, syncRelation.relationType)
+                if (mappedState != ScheduledState.UNKNOWN) {
+                    val relationLabel = when (syncRelation.relationType) {
+                        RelationType.HORARIO_INVERSO -> "Horario inverso de ${syncRelation.targetCircuitCode}"
+                        RelationType.DEPENDIENTE -> "Dependiente de ${syncRelation.targetCircuitCode}"
+                        RelationType.MISMO_HORARIO, RelationType.PERSONALIZADA, RelationType.INFORMATIVA ->
+                            "Sincronizado con ${syncRelation.targetCircuitCode}"
+                    }
+                    candidates += CandidateInterval(
+                        startMillis = seg.startMillis,
+                        endMillis = seg.endMillis,
+                        state = mappedState,
+                        source = RuleSource.SYNCHRONIZED_RELATION,
+                        label = relationLabel,
+                        notes = syncRelation.notes.ifBlank { relationLabel },
+                        isHistoricalTest = seg.isHistoricalTest,
+                        priority = 3
+                    )
+                }
+            }
+        } else {
+            // Priority 4: Fixed or Rotating recurring schedules
+            when (circuit.scheduleType) {
+                ScheduleType.FIXED -> {
+                    val rules = snapshot.fixedRules.filter { it.circuitCode.equals(circuit.code, ignoreCase = true) }
+                    if (rules.isNotEmpty()) {
+                        var cursor = startDate
+                        while (!cursor.isAfter(endDate)) {
+                            val dayIndex = cursor.dayOfWeek.toZeroBasedMondayIndex()
+                            val epochDay = cursor.toEpochDay()
+                            val matchingRules = rules.filter { rule ->
+                                val matchesDay = (rule.daysOfWeekMask and (1 shl dayIndex)) != 0
+                                val afterStart = rule.validFromEpochDay == null || epochDay >= rule.validFromEpochDay
+                                val beforeEnd = rule.validToEpochDay == null || epochDay <= rule.validToEpochDay
+                                matchesDay && afterStart && beforeEnd
                             }
-                            matchingRules.forEach { rule ->
-                                val (s, e) = resolveDateMinuteSpan(cursor, rule.startMinuteOfDay, rule.endMinuteOfDay, zoneId)
-                                if (e > rangeStartMillis && s < rangeEndMillis) {
+                            if (matchingRules.isNotEmpty()) {
+                                val dayStart = cursor.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                                val dayEnd = cursor.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                                if (dayEnd > rangeStartMillis && dayStart < rangeEndMillis) {
                                     candidates += CandidateInterval(
-                                        startMillis = maxOf(s, rangeStartMillis),
-                                        endMillis = minOf(e, rangeEndMillis),
-                                        state = ScheduledState.SERVICE_SCHEDULED,
+                                        startMillis = maxOf(dayStart, rangeStartMillis),
+                                        endMillis = minOf(dayEnd, rangeEndMillis),
+                                        state = ScheduledState.OUTAGE_SCHEDULED,
                                         source = RuleSource.FIXED_RULE,
-                                        label = rule.label.ifBlank { "Horario fijo" },
-                                        notes = rule.label,
+                                        label = "Horario fijo: Fuera de servicio",
+                                        notes = "",
                                         isHistoricalTest = false,
-                                        priority = 3
+                                        priority = 4
                                     )
                                 }
+                                matchingRules.forEach { rule ->
+                                    val (s, e) = resolveDateMinuteSpan(cursor, rule.startMinuteOfDay, rule.endMinuteOfDay, zoneId)
+                                    if (e > rangeStartMillis && s < rangeEndMillis) {
+                                        candidates += CandidateInterval(
+                                            startMillis = maxOf(s, rangeStartMillis),
+                                            endMillis = minOf(e, rangeEndMillis),
+                                            state = ScheduledState.SERVICE_SCHEDULED,
+                                            source = RuleSource.FIXED_RULE,
+                                            label = rule.label.ifBlank { "Horario fijo" },
+                                            notes = rule.label,
+                                            isHistoricalTest = false,
+                                            priority = 3
+                                        )
+                                    }
+                                }
                             }
-                        }
-                        cursor = cursor.plusDays(1)
-                    }
-                }
-            }
-
-            ScheduleType.ROTATING -> {
-                val group = circuit.groupId?.let { gid ->
-                    snapshot.groups.firstOrNull { it.id == gid && it.isActive }
-                }
-                if (group != null) {
-                    candidates += generateRotatingCandidates(group, rangeStartMillis, rangeEndMillis)
-                }
-            }
-
-            ScheduleType.CUSTOM, ScheduleType.NONE -> {
-                val syncRelation = snapshot.relations.firstOrNull {
-                    it.sourceCircuitCode.equals(circuit.code, ignoreCase = true) && it.syncRuleEnabled
-                }
-                if (syncRelation != null) {
-                    val targetSegments = buildTimelineForRange(
-                        circuitCode = syncRelation.targetCircuitCode,
-                        snapshot = snapshot,
-                        rangeStartMillis = rangeStartMillis,
-                        rangeEndMillis = rangeEndMillis,
-                        visitedCircuits = nextVisited,
-                        zoneId = zoneId
-                    )
-                    targetSegments.forEach { seg ->
-                        val mappedState = mapRelationState(seg.state, syncRelation.relationType)
-                        if (mappedState != ScheduledState.UNKNOWN) {
-                            candidates += CandidateInterval(
-                                startMillis = seg.startMillis,
-                                endMillis = seg.endMillis,
-                                state = mappedState,
-                                source = RuleSource.SYNCHRONIZED_RELATION,
-                                label = "Sincronizado con ${syncRelation.targetCircuitCode}",
-                                notes = syncRelation.notes,
-                                isHistoricalTest = seg.isHistoricalTest,
-                                priority = 3
-                            )
+                            cursor = cursor.plusDays(1)
                         }
                     }
                 }
+
+                ScheduleType.ROTATING -> {
+                    val group = circuit.groupId?.let { gid ->
+                        snapshot.groups.firstOrNull { it.id == gid && it.isActive }
+                    }
+                    if (group != null) {
+                        candidates += generateRotatingCandidates(group, rangeStartMillis, rangeEndMillis)
+                    }
+                }
+
+                ScheduleType.CUSTOM, ScheduleType.NONE -> Unit
             }
         }
 
@@ -555,18 +577,13 @@ object ScheduleEngine {
 
     private fun mapRelationState(targetState: ScheduledState, type: RelationType): ScheduledState {
         return when (type) {
-            RelationType.MISMO_HORARIO -> targetState
+            RelationType.MISMO_HORARIO, RelationType.DEPENDIENTE, RelationType.PERSONALIZADA -> targetState
             RelationType.HORARIO_INVERSO -> when (targetState) {
                 ScheduledState.SERVICE_SCHEDULED -> ScheduledState.OUTAGE_SCHEDULED
                 ScheduledState.OUTAGE_SCHEDULED -> ScheduledState.SERVICE_SCHEDULED
                 ScheduledState.UNKNOWN -> ScheduledState.UNKNOWN
             }
-            RelationType.DEPENDIENTE -> when (targetState) {
-                ScheduledState.SERVICE_SCHEDULED -> ScheduledState.SERVICE_SCHEDULED
-                ScheduledState.OUTAGE_SCHEDULED -> ScheduledState.OUTAGE_SCHEDULED
-                ScheduledState.UNKNOWN -> ScheduledState.UNKNOWN
-            }
-            RelationType.INFORMATIVA, RelationType.PERSONALIZADA -> ScheduledState.UNKNOWN
+            RelationType.INFORMATIVA -> ScheduledState.UNKNOWN
         }
     }
 
@@ -753,11 +770,12 @@ object ScheduleEngine {
         "[\\s\\u00A0\\u202F]+(a\\.?[\\s\\u00A0\\u202F]*m\\.?|p\\.?[\\s\\u00A0\\u202F]*m\\.?)",
         RegexOption.IGNORE_CASE
     )
-    private val time12Formatter = DateTimeFormatter.ofPattern("hh:mm a", Locale("es", "CU"))
+    private val esCuLocale: Locale = Locale.forLanguageTag("es-CU")
+    private val time12Formatter = DateTimeFormatter.ofPattern("hh:mm a", esCuLocale)
     private val time24Formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
-    private val dateFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, yyyy", Locale("es", "CU"))
+    private val dateFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, yyyy", esCuLocale)
     private val shortDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.US)
-    private val dateTime12Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", Locale("es", "CU"))
+    private val dateTime12Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", esCuLocale)
     private val dateTime24Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.US)
 
     fun keepAmPmTogether(formatted: String): String =

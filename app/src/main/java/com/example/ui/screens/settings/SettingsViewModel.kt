@@ -269,6 +269,12 @@ class SettingsViewModel(
         }
     }
 
+    fun setCenterTimelineOnNow(enabled: Boolean) {
+        viewModelScope.launch {
+            prefsRepo.setCenterTimelineOnNow(enabled)
+        }
+    }
+
     fun setCheckAllOnAppOpen(enabled: Boolean) {
         viewModelScope.launch {
             prefsRepo.setCheckAllOnAppOpen(enabled)
@@ -352,16 +358,17 @@ class SettingsViewModel(
     }
 
     fun saveSyncSettings(url: String, autoSync: Boolean, intervalHours: Int) {
-        val trimmed = url.trim()
-        if (trimmed.isNotEmpty() && !trimmed.startsWith("https://", ignoreCase = true)) {
+        val normalized = HttpsSyncManager.normalizeSyncUrl(url)
+        if (normalized.isNotEmpty() && !normalized.startsWith("https://", ignoreCase = true)) {
             feedbackMessage.value = "La dirección de sincronización debe usar HTTPS."
             return
         }
+        val effectiveUrl = normalized.ifBlank { HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL }
         val normalizedHours = UserPreferencesRepository.normalizeSyncInterval(intervalHours)
         viewModelScope.launch {
-            prefsRepo.setSyncConfig(trimmed, autoSync, normalizedHours)
-            ForecastSyncWorker.schedule(appContext, autoSync && trimmed.isNotEmpty(), normalizedHours)
-            feedbackMessage.value = if (autoSync && trimmed.isNotEmpty() && normalizedHours == 0) {
+            prefsRepo.setSyncConfig(effectiveUrl, autoSync, normalizedHours)
+            ForecastSyncWorker.schedule(appContext, autoSync && effectiveUrl.isNotEmpty(), normalizedHours)
+            feedbackMessage.value = if (autoSync && normalizedHours == 0) {
                 "Configuración guardada: sincronización automática al abrir la app."
             } else {
                 "Configuración de sincronización guardada."
@@ -370,21 +377,24 @@ class SettingsViewModel(
     }
 
     fun triggerManualSync(url: String) {
-        val trimmed = url.trim()
+        val effectiveUrl = HttpsSyncManager.normalizeSyncUrl(url)
+            .ifBlank { HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL }
         viewModelScope.launch {
             isSyncing.value = true
             val currentPrefs = prefsRepo.getSnapshot()
-            prefsRepo.setSyncConfig(trimmed, currentPrefs.autoSyncEnabled, currentPrefs.syncIntervalHours)
-            val outcome = syncManager.syncFromUrl(trimmed, forceApply = true)
+            prefsRepo.setSyncConfig(effectiveUrl, currentPrefs.autoSyncEnabled, currentPrefs.syncIntervalHours)
+            val outcome = syncManager.syncFromUrl(effectiveUrl, forceApply = true)
             isSyncing.value = false
             when (outcome) {
                 is SyncOutcome.Updated -> {
                     ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
                     WidgetUpdateHelper.refreshAllWidgets(appContext)
-                    feedbackMessage.value = "Pronóstico actualizado (v${outcome.version}): ${outcome.circuitCount} circuitos."
+                    val verLabel = outcome.versionName.ifBlank { outcome.version.toString() }
+                    feedbackMessage.value = "Pronóstico actualizado (v$verLabel): ${outcome.circuitCount} circuitos."
                 }
                 is SyncOutcome.UpToDate -> {
-                    feedbackMessage.value = "Ya cuentas con la última versión (v${outcome.version})."
+                    val verLabel = outcome.versionName.ifBlank { "v${outcome.version}" }
+                    feedbackMessage.value = "Ya cuentas con la última versión ($verLabel)."
                 }
                 is SyncOutcome.Failure -> {
                     feedbackMessage.value = outcome.reason

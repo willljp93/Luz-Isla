@@ -7,7 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,11 +15,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +50,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.model.WidgetCardStyle
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.theme.LuzIslaTheme
 import kotlinx.coroutines.launch
 
@@ -118,17 +122,21 @@ class WidgetConfigActivity : ComponentActivity() {
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        CenteredScrollableChipRow {
                             WidgetCardStyle.entries.forEach { style ->
+                                val styleIcon = when (style) {
+                                    WidgetCardStyle.SYSTEM -> Icons.Filled.AutoAwesome
+                                    WidgetCardStyle.LIGHT -> Icons.Filled.LightMode
+                                    WidgetCardStyle.DARK -> Icons.Filled.DarkMode
+                                    WidgetCardStyle.TRANSPARENT -> Icons.Filled.Opacity
+                                }
                                 FilterChip(
                                     selected = selectedStyle == style,
                                     onClick = { selectedStyle = style },
-                                    label = { Text(style.label) },
+                                    leadingIcon = {
+                                        Icon(styleIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text(style.label, maxLines = 1, softWrap = false) },
                                     modifier = Modifier.testTag("widget_config_style_${style.name.lowercase()}")
                                 )
                             }

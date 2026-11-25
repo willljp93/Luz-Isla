@@ -44,20 +44,22 @@ data class UserPreferences(
     val enableElectricAnimations: Boolean = true,
     val dynamicLauncherIconEnabled: Boolean = false,
     val bottomBarBehavior: BottomBarBehavior = BottomBarBehavior.AUTO,
+    val centerTimelineOnNow: Boolean = false,
     val activeConfigVersion: Int = AppVersionConfig.APP_VERSION_CODE,
     val activeConfigVersionName: String = AppVersionConfig.APP_VERSION_NAME,
     val activeConfigTimestampMillis: Long = 0L,
     val activeConfigSource: String = "Configuración local inicial",
     val lastExportIsoDate: String = "",
     val lastExportDayBuild: Int = 0,
-    val syncUrl: String = "",
-    val autoSyncEnabled: Boolean = false,
+    val syncUrl: String = com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,
+    val autoSyncEnabled: Boolean = true,
     val syncIntervalHours: Int = 0,
     val lastSyncEpochMillis: Long = 0L,
     val lastForecastUpdateEpochMillis: Long = 0L,
     val lastRemoteConfigVersion: Int = 0,
     val lastRemoteConfigVersionName: String = "",
-    val lastSyncStatus: String = "Sin sincronización remota configurada",
+    val lastRemoteJsonHash: String = "",
+    val lastSyncStatus: String = "Sincronización GitHub lista",
     val checkAllOnAppOpen: Boolean = true,
     val lastUnifiedCheckEpochMillis: Long = 0L,
     val lastUnifiedJsonStatus: String = "Pendiente",
@@ -110,6 +112,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val ENABLE_ELECTRIC_ANIMATIONS = booleanPreferencesKey("enable_electric_animations")
         val DYNAMIC_LAUNCHER_ICON = booleanPreferencesKey("dynamic_launcher_icon")
         val BOTTOM_BAR_BEHAVIOR = stringPreferencesKey("bottom_bar_behavior")
+        val CENTER_TIMELINE_ON_NOW = booleanPreferencesKey("center_timeline_on_now")
         val ACTIVE_CONFIG_VERSION = intPreferencesKey("active_config_version")
         val ACTIVE_CONFIG_VERSION_NAME = stringPreferencesKey("active_config_version_name")
         val ACTIVE_CONFIG_TIMESTAMP = longPreferencesKey("active_config_timestamp")
@@ -123,6 +126,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         val LAST_FORECAST_UPDATE_MILLIS = longPreferencesKey("last_forecast_update_millis")
         val LAST_REMOTE_VERSION = intPreferencesKey("last_remote_version")
         val LAST_REMOTE_VERSION_NAME = stringPreferencesKey("last_remote_version_name")
+        val LAST_REMOTE_JSON_HASH = stringPreferencesKey("last_remote_json_hash")
         val LAST_SYNC_STATUS = stringPreferencesKey("last_sync_status")
         val CHECK_ALL_ON_APP_OPEN = booleanPreferencesKey("check_all_on_app_open")
         val LAST_UNIFIED_CHECK_MILLIS = longPreferencesKey("last_unified_check_millis")
@@ -207,20 +211,23 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             bottomBarBehavior = runCatching {
                 BottomBarBehavior.valueOf(prefs[Keys.BOTTOM_BAR_BEHAVIOR] ?: BottomBarBehavior.AUTO.name)
             }.getOrDefault(BottomBarBehavior.AUTO),
+            centerTimelineOnNow = prefs[Keys.CENTER_TIMELINE_ON_NOW] ?: false,
             activeConfigVersion = activeNum,
             activeConfigVersionName = activeName,
             activeConfigTimestampMillis = activeTs,
             activeConfigSource = prefs[Keys.ACTIVE_CONFIG_SOURCE] ?: "Configuración local inicial",
             lastExportIsoDate = prefs[Keys.LAST_EXPORT_ISO_DATE].orEmpty(),
             lastExportDayBuild = prefs[Keys.LAST_EXPORT_DAY_BUILD] ?: 0,
-            syncUrl = prefs[Keys.SYNC_URL].orEmpty(),
-            autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: false,
+            syncUrl = prefs[Keys.SYNC_URL]?.takeIf { it.isNotBlank() }
+                ?: com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,
+            autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: true,
             syncIntervalHours = normalizeSyncInterval(prefs[Keys.SYNC_INTERVAL_HOURS] ?: 0),
             lastSyncEpochMillis = prefs[Keys.LAST_SYNC_MILLIS] ?: 0L,
             lastForecastUpdateEpochMillis = prefs[Keys.LAST_FORECAST_UPDATE_MILLIS] ?: 0L,
             lastRemoteConfigVersion = prefs[Keys.LAST_REMOTE_VERSION] ?: 0,
             lastRemoteConfigVersionName = prefs[Keys.LAST_REMOTE_VERSION_NAME].orEmpty(),
-            lastSyncStatus = prefs[Keys.LAST_SYNC_STATUS] ?: "Sin sincronización remota configurada",
+            lastRemoteJsonHash = prefs[Keys.LAST_REMOTE_JSON_HASH].orEmpty(),
+            lastSyncStatus = prefs[Keys.LAST_SYNC_STATUS] ?: "Sincronización GitHub lista",
             checkAllOnAppOpen = prefs[Keys.CHECK_ALL_ON_APP_OPEN] ?: true,
             lastUnifiedCheckEpochMillis = prefs[Keys.LAST_UNIFIED_CHECK_MILLIS] ?: 0L,
             lastUnifiedJsonStatus = prefs[Keys.LAST_UNIFIED_JSON_STATUS] ?: "Pendiente",
@@ -398,6 +405,10 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[Keys.BOTTOM_BAR_BEHAVIOR] = behavior.name }
     }
 
+    suspend fun setCenterTimelineOnNow(enabled: Boolean) {
+        dataStore.edit { it[Keys.CENTER_TIMELINE_ON_NOW] = enabled }
+    }
+
     suspend fun setCheckAllOnAppOpen(enabled: Boolean) {
         dataStore.edit { it[Keys.CHECK_ALL_ON_APP_OPEN] = enabled }
     }
@@ -453,8 +464,9 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     suspend fun setSyncConfig(url: String, autoSync: Boolean, intervalHours: Int) {
+        val normalized = com.example.sync.HttpsSyncManager.normalizeSyncUrl(url)
         dataStore.edit {
-            it[Keys.SYNC_URL] = url.trim()
+            it[Keys.SYNC_URL] = normalized
             it[Keys.AUTO_SYNC_ENABLED] = autoSync
             it[Keys.SYNC_INTERVAL_HOURS] = normalizeSyncInterval(intervalHours)
         }
@@ -464,7 +476,8 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         version: Int,
         forecastUpdateMillis: Long,
         statusMessage: String,
-        versionName: String = ""
+        versionName: String = "",
+        remoteJsonHash: String = ""
     ) {
         val resolvedName = AppVersionConfig.formatConfigVersionDisplay(
             numericVersion = version,
@@ -476,6 +489,9 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             it[Keys.LAST_FORECAST_UPDATE_MILLIS] = forecastUpdateMillis
             it[Keys.LAST_REMOTE_VERSION] = version
             it[Keys.LAST_REMOTE_VERSION_NAME] = resolvedName
+            if (remoteJsonHash.isNotBlank()) {
+                it[Keys.LAST_REMOTE_JSON_HASH] = remoteJsonHash
+            }
             it[Keys.LAST_SYNC_STATUS] = statusMessage
         }
     }

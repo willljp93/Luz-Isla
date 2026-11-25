@@ -144,7 +144,7 @@ object ConfigCodec {
         return if (pretty) prettyJson.encodeToString(normalized) else json.encodeToString(normalized)
     }
 
-    fun decodeFromJson(rawJson: String): DecodedConfigResult {
+    fun decodeFromJson(rawJson: String, verifySha256: Boolean = true): DecodedConfigResult {
         val trimmed = rawJson.trim()
         if (trimmed.isEmpty()) throw IllegalArgumentException("El archivo JSON está vacío.")
 
@@ -160,10 +160,11 @@ object ConfigCodec {
         val shaVerified = if (parsed.sha256.isNotBlank()) {
             val canonicalUnsigned = json.encodeToString(parsed.copy(sha256 = ""))
             val expectedHash = sha256Hex(canonicalUnsigned.toByteArray(Charsets.UTF_8))
-            if (!expectedHash.equals(parsed.sha256.trim(), ignoreCase = true)) {
+            val matches = expectedHash.equals(parsed.sha256.trim(), ignoreCase = true)
+            if (!matches && verifySha256) {
                 throw IllegalArgumentException("Fallo de integridad SHA-256: los datos fueron alterados o están dañados.")
             }
-            true
+            matches
         } else {
             false
         }

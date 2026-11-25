@@ -11,8 +11,18 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 sealed interface SyncOutcome {
-    data class Updated(val version: Int, val circuitCount: Int, val forecastCount: Int) : SyncOutcome
-    data class UpToDate(val version: Int) : SyncOutcome
+    data class Updated(
+        val version: Int,
+        val circuitCount: Int,
+        val forecastCount: Int,
+        val versionName: String = ""
+    ) : SyncOutcome
+
+    data class UpToDate(
+        val version: Int,
+        val versionName: String = ""
+    ) : SyncOutcome
+
     data class Failure(val reason: String) : SyncOutcome
 }
 
@@ -27,18 +37,18 @@ class HttpsSyncManager(
         .build()
 
     suspend fun syncFromUrl(url: String, forceApply: Boolean = false): SyncOutcome = withContext(Dispatchers.IO) {
-        val trimmed = url.trim()
-        if (trimmed.isEmpty()) {
+        val normalizedUrl = normalizeSyncUrl(url)
+        if (normalizedUrl.isEmpty()) {
             return@withContext SyncOutcome.Failure("Configura una dirección HTTPS válida antes de sincronizar.")
         }
-        if (!trimmed.startsWith("https://", ignoreCase = true)) {
+        if (!normalizedUrl.startsWith("https://", ignoreCase = true)) {
             return@withContext SyncOutcome.Failure("Por seguridad, solo se permiten direcciones HTTPS.")
         }
 
         try {
             val request = Request.Builder()
-                .url(trimmed)
-                .header("Accept", "application/json")
+                .url(normalizedUrl)
+                .header("Accept", "application/json, text/plain;q=0.9")
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -55,19 +65,30 @@ class HttpsSyncManager(
                     return@withContext SyncOutcome.Failure(msg)
                 }
 
-                val decoded = ConfigCodec.decodeFromJson(body)
+                val bodyHash = ConfigCodec.sha256Hex(body.toByteArray(Charsets.UTF_8))
+                val decoded = runCatching { ConfigCodec.decodeFromJson(body, verifySha256 = true) }
+                    .getOrElse { ConfigCodec.decodeFromJson(body, verifySha256 = false) }
                 val prefs = prefsRepo.getSnapshot()
-                if (!forceApply && decoded.payload.configVersion <= prefs.lastRemoteConfigVersion && prefs.lastRemoteConfigVersion > 0) {
+                val ts = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso)
+                    ?: System.currentTimeMillis()
+                val remoteVersionName = decoded.payload.displayVersion(ts)
+
+                val sameNumeric = decoded.payload.configVersion <= prefs.lastRemoteConfigVersion
+                val sameName = decoded.payload.configVersionName.isBlank() ||
+                    decoded.payload.configVersionName == prefs.lastRemoteConfigVersionName
+                val sameContent = prefs.lastRemoteJsonHash.isBlank() || bodyHash == prefs.lastRemoteJsonHash
+
+                if (!forceApply && prefs.lastRemoteConfigVersion > 0 && sameNumeric && sameName && sameContent) {
                     val activeRemoteLabel = prefs.lastRemoteConfigVersionName.ifBlank {
                         "v${prefs.lastRemoteConfigVersion}"
                     }
                     val msg = "Ya tienes la versión más reciente ($activeRemoteLabel)."
                     prefsRepo.recordSyncStatus(msg)
-                    return@withContext SyncOutcome.UpToDate(prefs.lastRemoteConfigVersion)
+                    return@withContext SyncOutcome.UpToDate(
+                        version = prefs.lastRemoteConfigVersion,
+                        versionName = activeRemoteLabel
+                    )
                 }
-
-                val ts = ConfigCodec.parseGeneratedAtMillis(decoded.payload.generatedAtIso) ?: System.currentTimeMillis()
-                val remoteVersionName = decoded.payload.displayVersion(ts)
 
                 // Backup current config before updating
                 val currentSnapshot = repository.getCurrentSnapshot()
@@ -95,7 +116,8 @@ class HttpsSyncManager(
                     version = decoded.payload.configVersion,
                     forecastUpdateMillis = System.currentTimeMillis(),
                     statusMessage = status,
-                    versionName = remoteVersionName
+                    versionName = remoteVersionName,
+                    remoteJsonHash = bodyHash
                 )
                 prefsRepo.recordActiveConfigMetadata(
                     version = decoded.payload.configVersion,
@@ -107,13 +129,34 @@ class HttpsSyncManager(
                 SyncOutcome.Updated(
                     version = decoded.payload.configVersion,
                     circuitCount = decoded.snapshot.circuits.size,
-                    forecastCount = decoded.snapshot.explicitForecasts.size
+                    forecastCount = decoded.snapshot.explicitForecasts.size,
+                    versionName = remoteVersionName
                 )
             }
         } catch (e: Exception) {
             val msg = "Sin conexión o error al validar pronóstico: ${e.message ?: "Error de red"}. Se conservan los datos locales."
             prefsRepo.recordSyncStatus(msg)
             SyncOutcome.Failure(msg)
+        }
+    }
+
+    companion object {
+        const val DEFAULT_GITHUB_SYNC_URL =
+            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/luz_isla_config_2026.11.24.1.json"
+
+        private val GITHUB_BLOB_REGEX =
+            Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$", RegexOption.IGNORE_CASE)
+
+        fun normalizeSyncUrl(rawUrl: String): String {
+            val trimmed = rawUrl.trim()
+            if (trimmed.isEmpty()) return ""
+            val match = GITHUB_BLOB_REGEX.matchEntire(trimmed)
+            return if (match != null) {
+                val (owner, repo, branchAndPath) = match.destructured
+                "https://raw.githubusercontent.com/$owner/$repo/$branchAndPath"
+            } else {
+                trimmed
+            }
         }
     }
 }

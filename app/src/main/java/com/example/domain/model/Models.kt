@@ -125,8 +125,12 @@ data class ManualException(
     val startMinuteOfDay: Int,
     val endMinuteOfDay: Int,
     val hasService: Boolean,
-    val reason: String = ""
-)
+    val reason: String = "",
+    val endDateEpochDay: Long? = null
+) {
+    fun effectiveEndEpochDay(): Long = (endDateEpochDay ?: dateEpochDay).coerceAtLeast(dateEpochDay)
+    fun isMultiDay(): Boolean = effectiveEndEpochDay() > dateEpochDay
+}
 
 @Serializable
 data class CircuitRelation(

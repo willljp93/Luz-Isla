@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -318,6 +319,7 @@ private fun LuzIslaApp(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
         ) {
             CompositionLocalProvider(LocalBottomOverlayPadding provides bottomOverlayPadding) {
                 Row(
@@ -428,10 +430,10 @@ private fun LuzIslaApp(
                             Surface(
                                 onClick = { isBottomBarVisible = false },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
-                                tonalElevation = 4.dp,
-                                shadowElevation = 4.dp,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.56f),
+                                tonalElevation = 1.dp,
+                                shadowElevation = 1.dp,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
                                 modifier = Modifier
                                     .padding(bottom = 4.dp)
                                     .defaultMinSize(minWidth = 56.dp, minHeight = 32.dp)
@@ -457,7 +459,7 @@ private fun LuzIslaApp(
                                     Icon(
                                         imageVector = Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "Ocultar barra de navegación",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -517,10 +519,10 @@ private fun LuzIslaApp(
                         Surface(
                             onClick = { isBottomBarVisible = true },
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f),
-                            tonalElevation = 6.dp,
-                            shadowElevation = 6.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.30f)),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.28f),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
                             modifier = Modifier
                                 .defaultMinSize(minWidth = 60.dp, minHeight = 34.dp)
                                 .pointerInput(Unit) {
@@ -545,7 +547,7 @@ private fun LuzIslaApp(
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowUp,
                                     contentDescription = "Mostrar barra de navegación",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
                                     modifier = Modifier.size(22.dp)
                                 )
                             }

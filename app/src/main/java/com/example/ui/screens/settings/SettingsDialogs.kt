@@ -14,10 +14,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -263,7 +265,10 @@ fun DayNightTimeDialog(
                     FilterChip(
                         selected = autoSelected,
                         onClick = { autoSelected = true },
-                        label = { Text("Automático") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.WbSunny, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        label = { Text("Automático", maxLines = 1, softWrap = false) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("solar_mode_auto_chip")
@@ -271,7 +276,10 @@ fun DayNightTimeDialog(
                     FilterChip(
                         selected = !autoSelected,
                         onClick = { autoSelected = false },
-                        label = { Text("Manual") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        label = { Text("Manual", maxLines = 1, softWrap = false) },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("solar_mode_manual_chip")
@@ -365,7 +373,7 @@ fun DayNightTimeDialog(
                         .testTag("solar_attribution_dialog_link")
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.OpenInNew,
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                         contentDescription = "Abrir sunrisesunset.io",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(15.dp)

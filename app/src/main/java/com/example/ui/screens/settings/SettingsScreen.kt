@@ -5,19 +5,17 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Notifications
@@ -52,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.sync.SunriseSunsetService
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.TimezonePickerDialog
 import com.example.ui.theme.LocalBottomOverlayPadding
 import kotlinx.coroutines.delay
@@ -126,6 +125,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -159,12 +159,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        CenteredScrollableChipRow {
                             SettingsCategoryTab.entries.forEach { tab ->
                                 FilterChip(
                                     selected = selectedTab == tab,
@@ -196,7 +191,8 @@ fun SettingsScreen(
                                 currentNowMillis = currentNowMillis,
                                 onSetTimezonePreference = viewModel::setTimezonePreference,
                                 onOpenTimezoneDialog = { showTimezoneDialog = true },
-                                onSetUse24HourFormat = viewModel::setUse24HourFormat
+                                onSetUse24HourFormat = viewModel::setUse24HourFormat,
+                                onSetCenterTimelineOnNow = viewModel::setCenterTimelineOnNow
                             )
                         }
                     }
@@ -209,6 +205,7 @@ fun SettingsScreen(
                                 onSetDynamicColor = viewModel::setDynamicColor,
                                 onSetEnableElectricAnimations = viewModel::setEnableElectricAnimations,
                                 onSetBottomBarBehavior = viewModel::setBottomBarBehavior,
+                                onSetCenterTimelineOnNow = viewModel::setCenterTimelineOnNow,
                                 onSetWidgetCardStyle = viewModel::setWidgetCardStyle,
                                 onOpenDayNightDialog = { showDayNightDialog = true },
                                 onSyncSolarNow = viewModel::syncSolarTimesNow,

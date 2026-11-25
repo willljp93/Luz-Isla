@@ -1,8 +1,8 @@
 package com.example.ui.screens.calendar
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,16 +17,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.EventBusy
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.LockClock
+import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.Circuit
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.Continuous3DTickerTimeline
 import com.example.ui.components.Timeline24hBar
 import com.example.ui.components.TimelineIntervalsSummaryList
@@ -57,6 +65,7 @@ import com.example.ui.theme.LocalBottomOverlayPadding
 import com.example.ui.theme.LocalElectricStatusColors
 import java.time.LocalDate
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CalendarScreen(
     viewModel: CalendarViewModel,
@@ -64,9 +73,11 @@ fun CalendarScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val statusColors = LocalElectricStatusColors.current
-    val today = remember(state.zoneId) { LocalDate.now(state.zoneId) }
-    val nowMillis = remember(state.selectedDate, today) {
-        if (state.selectedDate == today) System.currentTimeMillis() else null
+    val today = remember(state.nowMillis, state.zoneId) {
+        java.time.Instant.ofEpochMilli(state.nowMillis).atZone(state.zoneId).toLocalDate()
+    }
+    val nowMillis = remember(state.selectedDate, today, state.nowMillis) {
+        if (state.selectedDate == today) state.nowMillis else null
     }
     var showCircuitPickerDialog by remember { mutableStateOf(false) }
 
@@ -87,18 +98,25 @@ fun CalendarScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item(key = "calendar_header") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Calendario y Línea de Tiempo",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+            item(key = "calendar_title") {
+                Text(
+                    text = "Calendario y Línea de Tiempo",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
+            stickyHeader(key = "calendar_date_bar") {
+                Surface(
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
                     ) {
                         val isToday = state.selectedDate == today
                         Surface(
@@ -181,28 +199,64 @@ fun CalendarScreen(
                             }
                         }
                     }
+                }
+            }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+            item(key = "calendar_header_controls") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CenteredScrollableChipRow {
                         CalendarViewMode.entries.forEach { mode ->
+                            val modeIcon = when (mode) {
+                                CalendarViewMode.DAILY_COMPARATIVE -> Icons.AutoMirrored.Filled.ViewList
+                                CalendarViewMode.WEEKLY_7_DAYS -> Icons.Filled.DateRange
+                                CalendarViewMode.BY_CIRCUIT -> Icons.Filled.Timeline
+                                CalendarViewMode.GROUPS -> Icons.Filled.Groups
+                            }
                             FilterChip(
                                 selected = state.viewMode == mode,
                                 onClick = { viewModel.selectViewMode(mode) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = modeIcon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
                                 label = { Text(mode.label, maxLines = 1, softWrap = false) },
                                 modifier = Modifier.testTag("calendar_mode_${mode.name.lowercase()}")
                             )
                         }
-                        if (state.viewMode != CalendarViewMode.GROUPS) {
-                            FilterChip(
-                                selected = state.favoritesOnly,
-                                onClick = viewModel::toggleFavoritesOnly,
-                                leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                label = { Text("Solo favoritos", maxLines = 1, softWrap = false) }
-                            )
+                    }
+
+                    if (state.viewMode != CalendarViewMode.GROUPS) {
+                        val visibleFilters = CalendarCircuitFilter.entries.filter { filter ->
+                            val count = state.filterCounts[filter] ?: 0
+                            filter == CalendarCircuitFilter.ALL || state.selectedFilter == filter || count > 0
+                        }
+                        CenteredScrollableChipRow {
+                            visibleFilters.forEach { filter ->
+                                val filterIcon = when (filter) {
+                                    CalendarCircuitFilter.ALL -> Icons.Filled.Apps
+                                    CalendarCircuitFilter.FAVORITES -> Icons.Filled.Star
+                                    CalendarCircuitFilter.WITH_SERVICE -> Icons.Filled.Bolt
+                                    CalendarCircuitFilter.OUTAGE -> Icons.Filled.PowerOff
+                                    CalendarCircuitFilter.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
+                                    CalendarCircuitFilter.FIXED -> Icons.Filled.LockClock
+                                }
+                                FilterChip(
+                                    selected = state.selectedFilter == filter,
+                                    onClick = { viewModel.selectFilter(filter) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = filterIcon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    label = { Text(filter.label, maxLines = 1, softWrap = false) },
+                                    modifier = Modifier.testTag("calendar_filter_${filter.name.lowercase()}")
+                                )
+                            }
                         }
                     }
 
@@ -245,7 +299,7 @@ fun CalendarScreen(
                                     )
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text(
-                                            text = "Ver 3D",
+                                            text = "Detalles",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )
@@ -264,6 +318,8 @@ fun CalendarScreen(
                                     segments = row.segments,
                                     barHeight = 28.dp,
                                     currentTimeMillis = nowMillis,
+                                    windowStartMillis = state.windowStartMillis,
+                                    windowEndMillis = state.windowEndMillis,
                                     use24h = state.use24h,
                                     zoneId = state.zoneId,
                                     sunriseMinutes = state.sunriseMinutes,
@@ -280,9 +336,10 @@ fun CalendarScreen(
                 }
 
                 CalendarViewMode.BY_CIRCUIT -> {
+                    val pickerCircuits = state.filteredCircuits.ifEmpty { state.activeCircuits }
                     item(key = "circuit_selector") {
                         CircuitDropdownStepperBar(
-                            circuits = state.activeCircuits,
+                            circuits = pickerCircuits,
                             selectedCode = state.selectedCircuitCode,
                             favoriteColor = statusColors.favorite,
                             onSelectCode = viewModel::selectCircuit,
@@ -295,12 +352,26 @@ fun CalendarScreen(
                         }
                     if (selectedRow != null) {
                         item(key = "continuous_3d_wheel") {
+                            val initialWheelMillis = remember(selectedRow.circuit.code) {
+                                if (state.selectedDate == today) {
+                                    state.nowMillis
+                                } else {
+                                    state.selectedDate.atTime(12, 0).atZone(state.zoneId).toInstant().toEpochMilli()
+                                }
+                            }
                             Continuous3DTickerTimeline(
                                 circuitCode = selectedRow.circuit.code,
                                 snapshot = state.snapshot,
-                                nowMillis = System.currentTimeMillis(),
+                                nowMillis = state.nowMillis,
                                 use24h = state.use24h,
-                                zoneId = state.zoneId
+                                zoneId = state.zoneId,
+                                initialFocusMillis = initialWheelMillis,
+                                targetDate = state.selectedDate,
+                                onFocusedDateChanged = { focusedDate ->
+                                    if (focusedDate != state.selectedDate) {
+                                        viewModel.selectDate(focusedDate)
+                                    }
+                                }
                             )
                         }
                         item(key = "individual_timeline_card") {
@@ -315,7 +386,11 @@ fun CalendarScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = "Detalle del día: ${selectedRow.circuit.displayTitle()}",
+                                        text = if (state.centerTimelineOnNow) {
+                                            "Ventana actual (±12h): ${selectedRow.circuit.displayTitle()}"
+                                        } else {
+                                            "Detalle del día: ${selectedRow.circuit.displayTitle()}"
+                                        },
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -324,6 +399,8 @@ fun CalendarScreen(
                                         segments = selectedRow.segments,
                                         barHeight = 40.dp,
                                         currentTimeMillis = nowMillis,
+                                        windowStartMillis = state.windowStartMillis,
+                                        windowEndMillis = state.windowEndMillis,
                                         use24h = state.use24h,
                                         zoneId = state.zoneId,
                                         sunriseMinutes = state.sunriseMinutes,
@@ -350,9 +427,10 @@ fun CalendarScreen(
                 }
 
                 CalendarViewMode.WEEKLY_7_DAYS -> {
+                    val pickerCircuits = state.filteredCircuits.ifEmpty { state.activeCircuits }
                     item(key = "weekly_circuit_picker") {
                         CircuitDropdownStepperBar(
-                            circuits = state.activeCircuits,
+                            circuits = pickerCircuits,
                             selectedCode = state.selectedCircuitCode,
                             favoriteColor = statusColors.favorite,
                             onSelectCode = viewModel::selectCircuit,
@@ -381,7 +459,7 @@ fun CalendarScreen(
                                     date = day,
                                     segments = segments,
                                     barHeight = 26.dp,
-                                    currentTimeMillis = if (day == today) System.currentTimeMillis() else null,
+                                    currentTimeMillis = if (day == today) state.nowMillis else null,
                                     use24h = state.use24h,
                                     zoneId = state.zoneId,
                                     sunriseMinutes = state.sunriseMinutes,
@@ -435,6 +513,8 @@ fun CalendarScreen(
                                         segments = row.segments,
                                         barHeight = 28.dp,
                                         currentTimeMillis = nowMillis,
+                                        windowStartMillis = state.windowStartMillis,
+                                        windowEndMillis = state.windowEndMillis,
                                         use24h = state.use24h,
                                         zoneId = state.zoneId,
                                         sunriseMinutes = state.sunriseMinutes,

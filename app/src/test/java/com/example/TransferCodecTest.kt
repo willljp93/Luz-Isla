@@ -6,12 +6,14 @@ import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduleType
 import com.example.domain.version.AppVersionConfig
+import com.example.sync.HttpsSyncManager
 import com.example.transfer.ConfigCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.time.LocalDate
 
 class TransferCodecTest {
@@ -164,5 +166,64 @@ class TransferCodecTest {
         assertEquals(1, nextDayBuild)
         assertEquals("2026.11.24.1", AppVersionConfig.formatConfigVersionDisplay(26112401))
     }
+
+    @Test
+    fun `default github config file decodes cleanly with 19 circuits and exact checksum`() {
+        val candidateA = File("../luz_isla_config_2026.11.24.1.json")
+        val candidateB = File("luz_isla_config_2026.11.24.1.json")
+        val configFile = if (candidateA.exists()) candidateA else candidateB
+        assertTrue("Expected luz_isla_config_2026.11.24.1.json to exist", configFile.exists())
+
+        val rawText = configFile.readText(Charsets.UTF_8)
+        val decoded = ConfigCodec.decodeFromJson(rawText, verifySha256 = true)
+        assertTrue("Expected sha256Verified == true on default GitHub config", decoded.sha256Verified)
+        assertEquals(19, decoded.snapshot.circuits.size)
+        assertEquals(4, decoded.snapshot.groups.size)
+        assertEquals(1, decoded.snapshot.cycles.size)
+        assertEquals(3, decoded.snapshot.fixedRules.size)
+        assertEquals("2026.11.24.1", decoded.payload.configVersionName)
+    }
+
+    @Test
+    fun `verifySha256 false allows hand-edited json while default verifySha256 true rejects mismatch`() {
+        val snapshot = ScheduleSnapshot(
+            circuits = listOf(Circuit("A210", scheduleType = ScheduleType.FIXED)),
+            groups = emptyList(),
+            fixedRules = emptyList(),
+            explicitForecasts = emptyList(),
+            manualExceptions = emptyList(),
+            relations = emptyList()
+        )
+        val payload = ConfigCodec.snapshotToPayload(snapshot, configVersion = 10, includePersonalData = false)
+        val tampered = ConfigCodec.encodeToJson(payload, pretty = true)
+            .replace("\"configVersion\": 10", "\"configVersion\": 11")
+
+        var strictFailed = false
+        try {
+            ConfigCodec.decodeFromJson(tampered)
+        } catch (_: IllegalArgumentException) {
+            strictFailed = true
+        }
+        assertTrue(strictFailed)
+
+        val lenient = ConfigCodec.decodeFromJson(tampered, verifySha256 = false)
+        assertFalse(lenient.sha256Verified)
+        assertEquals(11, lenient.payload.configVersion)
+    }
+
+    @Test
+    fun `normalizeSyncUrl rewrites github blob links to raw githubusercontent`() {
+        assertEquals(
+            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/luz_isla_config_2026.11.24.1.json",
+            HttpsSyncManager.normalizeSyncUrl(
+                "https://github.com/willljp93/Luz-Isla/blob/main/luz_isla_config_2026.11.24.1.json"
+            )
+        )
+        assertEquals(
+            HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,
+            HttpsSyncManager.normalizeSyncUrl("  ${HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL}  ")
+        )
+    }
 }
+
 

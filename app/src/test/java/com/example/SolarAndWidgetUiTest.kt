@@ -8,8 +8,10 @@ import com.example.domain.model.WidgetCardStyle
 import com.example.widget.ResolvedWidgetSurface
 import com.example.widget.WidgetSizeTier
 import com.example.widget.WidgetUpdateHelper
+import com.example.sync.HttpsSyncManager
 import com.example.ui.components.computeHourlySolarPalette
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -105,6 +107,9 @@ class SolarAndWidgetUiTest {
         assertEquals(0, defaults.syncIntervalHours)
         assertEquals(BottomBarBehavior.AUTO, defaults.bottomBarBehavior)
         assertTrue(defaults.checkAllOnAppOpen)
+        assertFalse(defaults.centerTimelineOnNow)
+        assertTrue(defaults.autoSyncEnabled)
+        assertEquals(HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL, defaults.syncUrl)
 
         assertEquals(0, UserPreferencesRepository.normalizeSyncInterval(6))
         assertEquals(0, UserPreferencesRepository.normalizeSyncInterval(12))

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.AlertDialog
@@ -304,6 +305,9 @@ fun TimezonePickerDialog(
                     FilterChip(
                         selected = activeTab == 1,
                         onClick = { activeTab = 1 },
+                        leadingIcon = {
+                            Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = {
                             Text("Zonas IANA", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                         },

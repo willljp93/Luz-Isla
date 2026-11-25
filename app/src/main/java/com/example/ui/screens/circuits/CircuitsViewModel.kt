@@ -51,6 +51,10 @@ data class CircuitsAdminUiState(
     val fixedOnly: Boolean = false,
     val favoritesOnly: Boolean = false,
     val showInactive: Boolean = true,
+    val favoritesCount: Int = 0,
+    val inactiveCount: Int = 0,
+    val fixedCount: Int = 0,
+    val groupMemberCounts: Map<String, Int> = emptyMap(),
     val circuits: List<Circuit> = emptyList(),
     val allCircuits: List<Circuit> = emptyList(),
     val cycles: List<RotationCycle> = emptyList(),
@@ -117,6 +121,14 @@ class CircuitsViewModel(
             }
             .sortedWith(compareBy<Circuit> { !it.isActive }.thenBy { it.displayOrder }.thenBy { it.code })
 
+        val baseVisibleCircuits = snapshot.circuits.filter { showInact || it.isActive }
+        val favoritesCount = baseVisibleCircuits.count { it.isFavorite || it.isPrimaryHome }
+        val inactiveCount = snapshot.circuits.count { !it.isActive }
+        val fixedCount = baseVisibleCircuits.count { it.scheduleType == ScheduleType.FIXED }
+        val groupMemberCounts = snapshot.groups.associate { grp ->
+            grp.id to baseVisibleCircuits.count { it.groupId == grp.id }
+        }
+
         CircuitsAdminUiState(
             primaryTab = controls.primaryTab,
             programmingSubTab = controls.programmingSubTab,
@@ -125,6 +137,10 @@ class CircuitsViewModel(
             fixedOnly = controls.fixedOnly,
             favoritesOnly = controls.favoritesOnly,
             showInactive = showInact,
+            favoritesCount = favoritesCount,
+            inactiveCount = inactiveCount,
+            fixedCount = fixedCount,
+            groupMemberCounts = groupMemberCounts,
             circuits = filteredCircuits,
             allCircuits = snapshot.circuits,
             cycles = snapshot.cycles,
@@ -428,13 +444,24 @@ class CircuitsViewModel(
         id: String?,
         circuitCode: String,
         dateStr: String,
+        endDateStr: String,
         startTimeStr: String,
         endTimeStr: String,
         hasService: Boolean,
         reason: String
     ) {
         val date = runCatching { LocalDate.parse(dateStr.trim()) }.getOrNull() ?: run {
-            statusMessage.value = "Fecha inválida (usa AAAA-MM-DD)."
+            statusMessage.value = "Fecha inicial inválida (usa AAAA-MM-DD)."
+            return
+        }
+        val parsedEnd = endDateStr.trim().takeIf { it.isNotEmpty() }?.let { raw ->
+            runCatching { LocalDate.parse(raw) }.getOrNull() ?: run {
+                statusMessage.value = "Fecha final inválida (usa AAAA-MM-DD)."
+                return
+            }
+        }
+        if (parsedEnd != null && parsedEnd.isBefore(date)) {
+            statusMessage.value = "La fecha Hasta no puede ser anterior a Desde."
             return
         }
         val startMin = parseTimeMinutes(startTimeStr)
@@ -443,6 +470,7 @@ class CircuitsViewModel(
             statusMessage.value = "Hora inválida (usa HH:mm)."
             return
         }
+        val storedEndEpoch = parsedEnd?.takeIf { it.isAfter(date) }?.toEpochDay()
         viewModelScope.launch {
             repository.upsertManualException(
                 ManualException(
@@ -452,11 +480,16 @@ class CircuitsViewModel(
                     startMinuteOfDay = startMin,
                     endMinuteOfDay = endMin,
                     hasService = hasService,
-                    reason = reason.trim()
+                    reason = reason.trim(),
+                    endDateEpochDay = storedEndEpoch
                 )
             )
             refreshSystemHooks()
-            statusMessage.value = "Excepción guardada para $circuitCode."
+            statusMessage.value = if (storedEndEpoch != null) {
+                "Excepción multi-día guardada para $circuitCode."
+            } else {
+                "Excepción guardada para $circuitCode."
+            }
         }
     }
 

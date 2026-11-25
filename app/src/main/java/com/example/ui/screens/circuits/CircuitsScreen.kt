@@ -3,7 +3,6 @@ package com.example.ui.screens.circuits
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,17 +21,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.GroupWork
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
@@ -76,6 +82,7 @@ import com.example.domain.model.ManualException
 import com.example.domain.model.RotationCycle
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.CompactSearchBar
 import com.example.ui.theme.LocalBottomOverlayPadding
 import com.example.ui.theme.LocalElectricStatusColors
@@ -111,6 +118,7 @@ fun CircuitsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -191,17 +199,26 @@ fun CircuitsScreen(
                         }
 
                         if (state.primaryTab == CircuitsPrimaryTab.PROGRAMMING) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
+                            CenteredScrollableChipRow {
                                 ProgrammingSubTab.entries.forEach { subTab ->
+                                    val subIcon = when (subTab) {
+                                        ProgrammingSubTab.CYCLES -> Icons.Filled.Autorenew
+                                        ProgrammingSubTab.GROUPS -> Icons.Filled.Groups
+                                        ProgrammingSubTab.FIXED -> Icons.Filled.LockClock
+                                        ProgrammingSubTab.EXCEPTIONS -> Icons.AutoMirrored.Filled.EventNote
+                                        ProgrammingSubTab.RELATIONS -> Icons.Filled.Link
+                                    }
                                     FilterChip(
                                         selected = state.programmingSubTab == subTab,
                                         onClick = { viewModel.selectProgrammingSubTab(subTab) },
-                                        label = { Text(subTab.label) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = subIcon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
+                                        label = { Text(subTab.label, maxLines = 1, softWrap = false) },
                                         modifier = Modifier.testTag("admin_tab_${subTab.name.lowercase()}")
                                     )
                                 }
@@ -222,39 +239,63 @@ fun CircuitsScreen(
                                         .fillMaxWidth()
                                         .testTag("circuits_search_input")
                                 )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    FilterChip(
-                                        selected = state.favoritesOnly,
-                                        onClick = viewModel::toggleFavoritesOnly,
-                                        label = { Text("Favoritos") }
-                                    )
-                                    FilterChip(
-                                        selected = state.showInactive,
-                                        onClick = viewModel::toggleShowInactive,
-                                        label = { Text("Mostrar inactivos") }
-                                    )
+                                CenteredScrollableChipRow(spacing = 6.dp) {
+                                    if (state.favoritesOnly || state.favoritesCount > 0) {
+                                        FilterChip(
+                                            selected = state.favoritesOnly,
+                                            onClick = viewModel::toggleFavoritesOnly,
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            },
+                                            label = { Text("Favoritos", maxLines = 1, softWrap = false) }
+                                        )
+                                    }
+                                    if (state.inactiveCount > 0) {
+                                        FilterChip(
+                                            selected = state.showInactive,
+                                            onClick = viewModel::toggleShowInactive,
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (state.showInactive) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            },
+                                            label = { Text("Mostrar inactivos", maxLines = 1, softWrap = false) }
+                                        )
+                                    }
                                     FilterChip(
                                         selected = state.selectedGroupFilterId == null && !state.fixedOnly,
                                         onClick = { viewModel.filterByGroup(null) },
-                                        label = { Text("Todos los grupos") }
+                                        leadingIcon = {
+                                            Icon(Icons.Filled.Apps, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        },
+                                        label = { Text("Todos", maxLines = 1, softWrap = false) }
                                     )
-                                    FilterChip(
-                                        selected = state.fixedOnly,
-                                        onClick = viewModel::toggleFixedOnly,
-                                        label = { Text("Fijos") },
-                                        modifier = Modifier.testTag("circuits_filter_fixed")
-                                    )
-                                    state.groups.forEach { grp ->
+                                    if (state.fixedOnly || state.fixedCount > 0) {
                                         FilterChip(
-                                            selected = !state.fixedOnly && state.selectedGroupFilterId == grp.id,
-                                            onClick = { viewModel.filterByGroup(grp.id) },
-                                            label = { Text(grp.name) }
+                                            selected = state.fixedOnly,
+                                            onClick = viewModel::toggleFixedOnly,
+                                            leadingIcon = {
+                                                Icon(Icons.Filled.LockClock, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            },
+                                            label = { Text("Fijos", maxLines = 1, softWrap = false) },
+                                            modifier = Modifier.testTag("circuits_filter_fixed")
                                         )
+                                    }
+                                    state.groups.forEach { grp ->
+                                        val memberCount = state.groupMemberCounts[grp.id] ?: 0
+                                        val isSelected = !state.fixedOnly && state.selectedGroupFilterId == grp.id
+                                        if (isSelected || memberCount > 0) {
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = { viewModel.filterByGroup(grp.id) },
+                                                leadingIcon = {
+                                                    Icon(Icons.Filled.GroupWork, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                },
+                                                label = { Text(grp.name, maxLines = 1, softWrap = false) }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -442,8 +483,14 @@ fun CircuitsScreen(
                         ProgrammingSubTab.EXCEPTIONS -> {
                             items(state.manualExceptions, key = { it.id }) { ex ->
                                 val d = LocalDate.ofEpochDay(ex.dateEpochDay)
+                                val dateRangeLabel = if (ex.isMultiDay()) {
+                                    val endD = LocalDate.ofEpochDay(ex.effectiveEndEpochDay())
+                                    "${ScheduleEngine.formatShortDate(d)} – ${ScheduleEngine.formatShortDate(endD)}"
+                                } else {
+                                    ScheduleEngine.formatShortDate(d)
+                                }
                                 AdminItemCard(
-                                    title = "${ex.circuitCode} • ${ScheduleEngine.formatShortDate(d)}",
+                                    title = "${ex.circuitCode} • $dateRangeLabel",
                                     subtitle = "${ScheduleEngine.formatMinuteOfDay(ex.startMinuteOfDay, state.use24h)}\u2060–\u2060${ScheduleEngine.formatMinuteOfDay(ex.endMinuteOfDay, state.use24h)} • ${if (ex.hasService) "Con servicio" else "Sin servicio"}",
                                     detail = ex.reason,
                                     onEdit = { editingException = false to ex },
@@ -453,10 +500,51 @@ fun CircuitsScreen(
                         }
 
                         ProgrammingSubTab.RELATIONS -> {
+                            item(key = "relations_intro") {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Text(
+                                            text = "Tipos de relación y cómo afectan el horario",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "• Mismo horario: copia exactamente el estado y las horas del circuito referencia.\n" +
+                                                "• Horario inverso: invierte el estado (con servicio ↔ sin servicio) respecto al circuito referencia.\n" +
+                                                "• Dependiente: el circuito dependiente sigue la disponibilidad eléctrica del referencia.\n" +
+                                                "• Personalizada: replica el horario del circuito referencia permitiendo añadir notas o condiciones propias.\n" +
+                                                "• Informativa: solo muestra el vínculo en el detalle sin alterar el horario propio del circuito.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Prioridad: Excepciones manuales > Pronósticos explícitos > Relación sincronizada > Grupo rotativo / Horario fijo.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
                             items(state.relations, key = { it.id }) { rel ->
+                                val isSyncActive = rel.syncRuleEnabled &&
+                                    rel.relationType != com.example.domain.model.RelationType.INFORMATIVA
+                                val typeLabel = when (rel.relationType) {
+                                    com.example.domain.model.RelationType.INFORMATIVA -> "Informativa"
+                                    com.example.domain.model.RelationType.MISMO_HORARIO -> "Mismo horario"
+                                    com.example.domain.model.RelationType.HORARIO_INVERSO -> "Horario inverso"
+                                    com.example.domain.model.RelationType.DEPENDIENTE -> "Dependiente"
+                                    com.example.domain.model.RelationType.PERSONALIZADA -> "Personalizada"
+                                }
                                 AdminItemCard(
-                                    title = "${rel.sourceCircuitCode} → ${rel.targetCircuitCode}",
-                                    subtitle = "Tipo: ${rel.relationType.name.lowercase().replace('_', ' ')} • Sync: ${if (rel.syncRuleEnabled) "Activa" else "Solo informativa"}",
+                                    title = "${rel.sourceCircuitCode} sigue a ${rel.targetCircuitCode}",
+                                    subtitle = "$typeLabel • ${if (isSyncActive) "Activa (anula grupo/fijo)" else "Solo informativa"}",
                                     detail = rel.notes,
                                     onEdit = { editingRelation = false to rel },
                                     onDelete = { viewModel.deleteRelation(rel.id) }

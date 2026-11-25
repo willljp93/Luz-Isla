@@ -1,7 +1,6 @@
 package com.example.ui.screens.circuits
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +13,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.GroupWork
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LockClock
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -35,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.Circuit
 import com.example.domain.model.CircuitRelation
@@ -43,6 +54,7 @@ import com.example.domain.model.ManualException
 import com.example.domain.model.RelationType
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.DateSelectorField
 import com.example.ui.components.TimeSelectorField
 import java.time.LocalDate
@@ -106,35 +118,35 @@ fun CircuitEditorDialog(
                 )
 
                 Text("Modalidad de programación", style = MaterialTheme.typography.labelLarge)
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                CenteredScrollableChipRow(spacing = 6.dp) {
                     ScheduleType.entries.forEach { st ->
-                        val label = when (st) {
-                            ScheduleType.FIXED -> "Fijo"
-                            ScheduleType.ROTATING -> "Rotativo"
-                            ScheduleType.CUSTOM -> "Por fecha"
-                            ScheduleType.NONE -> "Sin prog."
+                        val (label, icon) = when (st) {
+                            ScheduleType.FIXED -> "Fijo" to Icons.Filled.LockClock
+                            ScheduleType.ROTATING -> "Rotativo" to Icons.Filled.Autorenew
+                            ScheduleType.CUSTOM -> "Por fecha" to Icons.Filled.DateRange
+                            ScheduleType.NONE -> "Sin prog." to Icons.AutoMirrored.Filled.HelpOutline
                         }
                         FilterChip(
                             selected = scheduleType == st,
                             onClick = { scheduleType = st },
-                            label = { Text(label) }
+                            leadingIcon = {
+                                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            label = { Text(label, maxLines = 1, softWrap = false) }
                         )
                     }
                 }
 
                 if (groups.isNotEmpty()) {
                     Text("Grupo", style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                    CenteredScrollableChipRow(spacing = 6.dp) {
                         FilterChip(
                             selected = groupId == null,
                             onClick = { groupId = null },
-                            label = { Text("Ninguno") }
+                            leadingIcon = {
+                                Icon(Icons.Filled.Block, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            label = { Text("Ninguno", maxLines = 1, softWrap = false) }
                         )
                         groups.forEach { grp ->
                             FilterChip(
@@ -143,7 +155,10 @@ fun CircuitEditorDialog(
                                     groupId = grp.id
                                     scheduleType = ScheduleType.ROTATING
                                 },
-                                label = { Text(grp.name) }
+                                leadingIcon = {
+                                    Icon(Icons.Filled.GroupWork, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                label = { Text(grp.name, maxLines = 1, softWrap = false) }
                             )
                         }
                     }
@@ -319,16 +334,13 @@ fun FixedRuleEditorDialog(
                     )
                 }
                 Text("Días de la semana", style = MaterialTheme.typography.labelLarge)
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+                CenteredScrollableChipRow(spacing = 4.dp) {
                     dayLabels.forEachIndexed { idx, dLabel ->
                         val checked = (daysMask and (1 shl idx)) != 0
                         FilterChip(
                             selected = checked,
                             onClick = { daysMask = daysMask xor (1 shl idx) },
-                            label = { Text(dLabel) }
+                            label = { Text(dLabel, maxLines = 1, softWrap = false) }
                         )
                     }
                 }
@@ -397,13 +409,20 @@ fun ExceptionEditorDialog(
     zoneId: ZoneId,
     use24h: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: (String?, String, String, String, String, Boolean, String) -> Unit
+    onSave: (String?, String, String, String, String, String, Boolean, String) -> Unit
 ) {
     var code by remember { mutableStateOf(existing?.circuitCode ?: circuits.firstOrNull()?.code.orEmpty()) }
     var selectedDate by remember {
         mutableStateOf(
             existing?.let { LocalDate.ofEpochDay(it.dateEpochDay) }
                 ?: LocalDate.now(zoneId)
+        )
+    }
+    var endDate by remember {
+        mutableStateOf(
+            existing?.endDateEpochDay
+                ?.takeIf { it > existing.dateEpochDay }
+                ?.let { LocalDate.ofEpochDay(it) }
         )
     }
     var startMinute by remember { mutableIntStateOf(existing?.startMinuteOfDay ?: 0) }
@@ -439,12 +458,34 @@ fun ExceptionEditorDialog(
                         Icon(Icons.Filled.ArrowDropDown, contentDescription = "Seleccionar circuito")
                     }
                 }
-                DateSelectorField(
-                    label = "Fecha",
-                    date = selectedDate,
-                    onDateSelected = { selectedDate = it },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DateSelectorField(
+                        label = "Desde",
+                        date = selectedDate,
+                        onDateSelected = { newStart ->
+                            selectedDate = newStart
+                            val currentEnd = endDate
+                            if (currentEnd != null && currentEnd.isBefore(newStart)) {
+                                endDate = newStart
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("exception_start_date_field")
+                    )
+                    DateSelectorField(
+                        label = "Hasta (opc.)",
+                        date = endDate,
+                        placeholder = "Solo un día",
+                        onDateSelected = { newEnd ->
+                            endDate = if (newEnd.isBefore(selectedDate)) selectedDate else newEnd
+                        },
+                        onClear = { endDate = null },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("exception_end_date_field")
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TimeSelectorField(
                         label = "Inicio",
@@ -476,6 +517,7 @@ fun ExceptionEditorDialog(
                     existing?.id,
                     code,
                     selectedDate.toString(),
+                    endDate?.toString().orEmpty(),
                     CircuitsViewModel.formatMinute24h(startMinute),
                     CircuitsViewModel.formatMinute24h(endMinute),
                     hasService,
@@ -510,8 +552,12 @@ fun RelationEditorDialog(
 ) {
     var src by remember { mutableStateOf(existing?.sourceCircuitCode ?: circuits.firstOrNull()?.code.orEmpty()) }
     var tgt by remember { mutableStateOf(existing?.targetCircuitCode ?: circuits.getOrNull(1)?.code.orEmpty()) }
-    var type by remember { mutableStateOf(existing?.relationType ?: RelationType.INFORMATIVA) }
-    var syncEnabled by remember { mutableStateOf(existing?.syncRuleEnabled ?: false) }
+    var type by remember { mutableStateOf(existing?.relationType ?: RelationType.MISMO_HORARIO) }
+    var syncEnabled by remember {
+        mutableStateOf(
+            existing?.syncRuleEnabled ?: true
+        )
+    }
     var notes by remember { mutableStateOf(existing?.notes ?: "") }
     var pickTarget by remember { mutableStateOf<String?>(null) } // "SRC" or "TGT"
 
@@ -523,25 +569,69 @@ fun RelationEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Circuito origen", style = MaterialTheme.typography.labelLarge)
+                Text("Circuito dependiente (recibe horario)", style = MaterialTheme.typography.labelLarge)
                 OutlinedButton(onClick = { pickTarget = "SRC" }, modifier = Modifier.fillMaxWidth()) {
                     Text(circuits.firstOrNull { it.code == src }?.displayTitle() ?: src)
                 }
-                Text("Circuito relacionado", style = MaterialTheme.typography.labelLarge)
+                Text("Circuito referencia (aporta horario)", style = MaterialTheme.typography.labelLarge)
                 OutlinedButton(onClick = { pickTarget = "TGT" }, modifier = Modifier.fillMaxWidth()) {
                     Text(circuits.firstOrNull { it.code == tgt }?.displayTitle() ?: tgt)
                 }
                 Text("Tipo de relación", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                CenteredScrollableChipRow(spacing = 6.dp) {
                     RelationType.entries.forEach { rt ->
+                        val (rtLabel, rtIcon) = when (rt) {
+                            RelationType.INFORMATIVA -> "Informativa" to Icons.Filled.Info
+                            RelationType.MISMO_HORARIO -> "Mismo horario" to Icons.Filled.Sync
+                            RelationType.HORARIO_INVERSO -> "Horario inverso" to Icons.Filled.SwapHoriz
+                            RelationType.DEPENDIENTE -> "Dependiente" to Icons.Filled.Link
+                            RelationType.PERSONALIZADA -> "Personalizada" to Icons.Filled.Tune
+                        }
                         FilterChip(
                             selected = type == rt,
-                            onClick = { type = rt },
-                            label = { Text(rt.name.lowercase().replace('_', ' ')) }
+                            onClick = {
+                                type = rt
+                                syncEnabled = rt != RelationType.INFORMATIVA
+                            },
+                            leadingIcon = {
+                                Icon(rtIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            label = { Text(rtLabel, maxLines = 1, softWrap = false) }
                         )
                     }
                 }
-                SwitchRow("Aplicar regla de sincronización automática", syncEnabled) { syncEnabled = it }
+                val typeExplanation = when (type) {
+                    RelationType.MISMO_HORARIO ->
+                        "Mismo horario: copia exactamente los bloques con y sin servicio del circuito referencia."
+                    RelationType.HORARIO_INVERSO ->
+                        "Horario inverso: cuando el circuito referencia tiene servicio, el dependiente está sin servicio, y viceversa."
+                    RelationType.DEPENDIENTE ->
+                        "Dependiente: este circuito solo tiene servicio cuando el circuito referencia está con servicio."
+                    RelationType.PERSONALIZADA ->
+                        "Personalizada: sigue los cambios de estado del circuito referencia con tus propias notas descriptivas."
+                    RelationType.INFORMATIVA ->
+                        "Informativa: muestra la relación en el detalle del circuito sin cambiar su horario actual."
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = typeExplanation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                if (type != RelationType.INFORMATIVA) {
+                    SwitchRow("Aplicar sincronización automática", syncEnabled) { syncEnabled = it }
+                    Text(
+                        text = "Si está activa, anula el grupo rotativo o regla fija del circuito dependiente (debajo de excepciones manuales y pronósticos).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
@@ -552,7 +642,14 @@ fun RelationEditorDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(existing?.id, src, tgt, type, syncEnabled, notes)
+                onSave(
+                    existing?.id,
+                    src,
+                    tgt,
+                    type,
+                    type != RelationType.INFORMATIVA && syncEnabled,
+                    notes
+                )
                 onDismiss()
             }) { Text("Guardar") }
         },
@@ -561,7 +658,7 @@ fun RelationEditorDialog(
 
     pickTarget?.let { which ->
         CircuitSelectorDialog(
-            title = if (which == "SRC") "Circuito origen" else "Circuito relacionado",
+            title = if (which == "SRC") "Circuito dependiente" else "Circuito referencia",
             circuits = circuits,
             selectedCode = if (which == "SRC") src else tgt,
             onSelect = {

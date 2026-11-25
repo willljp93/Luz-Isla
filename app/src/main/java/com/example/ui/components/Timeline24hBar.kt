@@ -24,8 +24,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,9 +58,13 @@ import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.sp
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.roundToLong
 import kotlin.math.sin
 
 private data class TimelineSegSpan(
@@ -77,6 +81,8 @@ fun Timeline24hBar(
     modifier: Modifier = Modifier,
     barHeight: Dp = 32.dp,
     currentTimeMillis: Long? = null,
+    windowStartMillis: Long? = null,
+    windowEndMillis: Long? = null,
     selectedSegment: TimelineSegment? = null,
     showHourAxis: Boolean = true,
     use24h: Boolean = false,
@@ -87,9 +93,10 @@ fun Timeline24hBar(
     onSegmentTap: (TimelineSegment) -> Unit = {}
 ) {
     val statusColors = LocalElectricStatusColors.current
-    val dayStart = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-    val dayEnd = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val dayStart = windowStartMillis ?: date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val dayEnd = windowEndMillis ?: date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
     val totalDayMillis = (dayEnd - dayStart).coerceAtLeast(1L).toFloat()
+    val isCustomWindow = windowStartMillis != null && windowEndMillis != null
 
     val highlightColor = MaterialTheme.colorScheme.primary
 
@@ -115,9 +122,12 @@ fun Timeline24hBar(
     val surfaceColor = MaterialTheme.colorScheme.surface
     val isDarkTheme = surfaceColor.luminance() < 0.5f
 
-    // High-contrast Day/Night sky border anchored to sunrise and sunset
-    val dayNightBrush = remember(sunriseMinutes, sunsetMinutes, isDarkTheme) {
-        buildDayNightBorderBrush(
+    // Night-sky to day-sky gradient anchored to sunrise and sunset within the visible window
+    val dayNightBrush = remember(dayStart, dayEnd, sunriseMinutes, sunsetMinutes, isDarkTheme, zoneId) {
+        buildWindowDayNightBorderBrush(
+            windowStartMillis = dayStart,
+            windowEndMillis = dayEnd,
+            zoneId = zoneId,
             sunriseMinutes = sunriseMinutes,
             sunsetMinutes = sunsetMinutes,
             isDarkTheme = isDarkTheme
@@ -504,10 +514,20 @@ fun Timeline24hBar(
 
         if (showHourAxis) {
             Spacer(modifier = Modifier.height(4.dp))
-            val axisLabels = if (use24h) {
-                listOf("00", "04", "08", "12", "16", "20", "24")
-            } else {
-                listOf("12a", "4a", "8a", "12p", "4p", "8p", "12a")
+            val axisLabels = remember(isCustomWindow, dayStart, dayEnd, use24h, zoneId) {
+                if (!isCustomWindow) {
+                    if (use24h) {
+                        listOf("00", "04", "08", "12", "16", "20", "24")
+                    } else {
+                        listOf("12am", "4am", "8am", "12pm", "4pm", "8pm", "12am")
+                    }
+                } else {
+                    val span = (dayEnd - dayStart).coerceAtLeast(1L)
+                    (0..6).map { idx ->
+                        val tickMillis = dayStart + ((span * idx) / 6.0).roundToLong()
+                        formatAxisTickLabel(tickMillis, zoneId, use24h)
+                    }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -516,7 +536,11 @@ fun Timeline24hBar(
                 axisLabels.forEach { hour ->
                     Text(
                         text = hour,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = if (isCustomWindow) 10.sp else 11.sp
+                        ),
+                        maxLines = 1,
+                        softWrap = false,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -581,7 +605,7 @@ fun TimelineSegmentDetailCard(
         ScheduledState.UNKNOWN -> Quad(
             statusColors.unknown,
             statusColors.unknownContainer,
-            Icons.Filled.HelpOutline,
+            Icons.AutoMirrored.Filled.HelpOutline,
             "Sin información disponible"
         )
     }
@@ -707,39 +731,103 @@ private fun smoothStep(t: Float): Float {
     return c * c * (3f - 2f * c)
 }
 
-private fun buildDayNightBorderBrush(
+private fun formatAxisTickLabel(
+    epochMillis: Long,
+    zoneId: ZoneId,
+    use24h: Boolean
+): String {
+    val zdt = Instant.ofEpochMilli(epochMillis).atZone(zoneId)
+    val hour = zdt.hour
+    val minute = zdt.minute
+    return if (use24h) {
+        if (minute == 0) {
+            String.format(Locale.US, "%02d", hour)
+        } else {
+            String.format(Locale.US, "%02d:%02d", hour, minute)
+        }
+    } else {
+        val h12 = when {
+            hour == 0 -> 12
+            hour > 12 -> hour - 12
+            else -> hour
+        }
+        val suffix = if (hour < 12) "am" else "pm"
+        if (minute == 0) {
+            "$h12$suffix"
+        } else {
+            String.format(Locale.US, "%d:%02d%s", h12, minute, suffix)
+        }
+    }
+}
+
+private fun skyColorAtMinute(
+    minuteOfDay: Float,
+    sunriseMinutes: Int,
+    sunsetMinutes: Int,
+    isDarkTheme: Boolean
+): Color {
+    val sr = sunriseMinutes.coerceIn(120, 660).toFloat()
+    val ss = sunsetMinutes.coerceIn(780, 1320).toFloat()
+    val noon = (sr + ss) * 0.5f
+    val halfTransition = 55f
+
+    val nightDeep = if (isDarkTheme) Color(0xFF312E81) else Color(0xFF1E1B4B)
+    val twilightBlue = if (isDarkTheme) Color(0xFF4F46E5) else Color(0xFF2563EB)
+    val skyDay = if (isDarkTheme) Color(0xFF38BDF8) else Color(0xFF0EA5E9)
+    val skyNoon = if (isDarkTheme) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
+
+    val dawnStart = sr - halfTransition
+    val dawnEnd = sr + halfTransition
+    val duskStart = ss - halfTransition
+    val duskEnd = ss + halfTransition
+
+    return when {
+        minuteOfDay <= dawnStart || minuteOfDay >= duskEnd -> nightDeep
+        minuteOfDay < sr -> {
+            val t = smoothStep((minuteOfDay - dawnStart) / halfTransition)
+            lerp(nightDeep, twilightBlue, t)
+        }
+        minuteOfDay < dawnEnd -> {
+            val t = smoothStep((minuteOfDay - sr) / halfTransition)
+            lerp(twilightBlue, skyDay, t)
+        }
+        minuteOfDay < noon -> {
+            val t = smoothStep((minuteOfDay - dawnEnd) / (noon - dawnEnd).coerceAtLeast(1f))
+            lerp(skyDay, skyNoon, t)
+        }
+        minuteOfDay < duskStart -> {
+            val t = smoothStep((minuteOfDay - noon) / (duskStart - noon).coerceAtLeast(1f))
+            lerp(skyNoon, skyDay, t)
+        }
+        minuteOfDay < ss -> {
+            val t = smoothStep((minuteOfDay - duskStart) / halfTransition)
+            lerp(skyDay, twilightBlue, t)
+        }
+        else -> {
+            val t = smoothStep((minuteOfDay - ss) / halfTransition)
+            lerp(twilightBlue, nightDeep, t)
+        }
+    }
+}
+
+private fun buildWindowDayNightBorderBrush(
+    windowStartMillis: Long,
+    windowEndMillis: Long,
+    zoneId: ZoneId,
     sunriseMinutes: Int,
     sunsetMinutes: Int,
     isDarkTheme: Boolean
 ): Brush {
-    val sr = (sunriseMinutes / 1440f).coerceIn(0.12f, 0.44f)
-    val ss = (sunsetMinutes / 1440f).coerceIn(0.56f, 0.88f)
-    val nightDeep = if (isDarkTheme) Color(0xFF4338CA) else Color(0xFF1E1B4B)
-    val twilightIndigo = if (isDarkTheme) Color(0xFF6366F1) else Color(0xFF3730A3)
-    val dawnDuskAmber = if (isDarkTheme) Color(0xFFFBBF24) else Color(0xFFF59E0B)
-    val skyDay = if (isDarkTheme) Color(0xFF38BDF8) else Color(0xFF0EA5E9)
-    val skyNoon = if (isDarkTheme) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
-
-    val s1 = (sr - 0.05f).coerceIn(0.02f, 0.39f)
-    val s2 = sr.coerceIn(s1 + 0.01f, 0.45f)
-    val s3 = (sr + 0.06f).coerceIn(s2 + 0.01f, 0.49f)
-    val s5 = (ss - 0.06f).coerceIn(0.51f, 0.82f)
-    val s6 = ss.coerceIn(s5 + 0.01f, 0.88f)
-    val s7 = (ss + 0.05f).coerceIn(s6 + 0.01f, 0.98f)
-
-    return Brush.horizontalGradient(
-        colorStops = arrayOf(
-            0.00f to nightDeep,
-            s1 to twilightIndigo,
-            s2 to dawnDuskAmber,
-            s3 to skyDay,
-            0.50f to skyNoon,
-            s5 to skyDay,
-            s6 to dawnDuskAmber,
-            s7 to twilightIndigo,
-            1.00f to nightDeep
-        )
-    )
+    val span = (windowEndMillis - windowStartMillis).coerceAtLeast(1L)
+    val sampleCount = 24
+    val stops = Array(sampleCount + 1) { idx ->
+        val frac = idx.toFloat() / sampleCount.toFloat()
+        val instantMillis = windowStartMillis + (span * frac).roundToLong()
+        val zdt = Instant.ofEpochMilli(instantMillis).atZone(zoneId)
+        val minuteOfDay = zdt.hour * 60f + zdt.minute + zdt.second / 60f
+        frac to skyColorAtMinute(minuteOfDay, sunriseMinutes, sunsetMinutes, isDarkTheme)
+    }
+    return Brush.horizontalGradient(colorStops = stops)
 }
 
 private fun stateIntensityAt(frac: Float, spans: List<TimelineSegSpan>): Float {

@@ -186,7 +186,8 @@ data class ManualExceptionEntity(
     val startMinuteOfDay: Int,
     val endMinuteOfDay: Int,
     val hasService: Boolean,
-    val reason: String = ""
+    val reason: String = "",
+    val endDateEpochDay: Long? = null
 ) {
     fun toDomain(): ManualException = ManualException(
         id = id,
@@ -195,7 +196,8 @@ data class ManualExceptionEntity(
         startMinuteOfDay = startMinuteOfDay,
         endMinuteOfDay = endMinuteOfDay,
         hasService = hasService,
-        reason = reason
+        reason = reason,
+        endDateEpochDay = endDateEpochDay
     )
 
     companion object {
@@ -206,7 +208,8 @@ data class ManualExceptionEntity(
             startMinuteOfDay = model.startMinuteOfDay,
             endMinuteOfDay = model.endMinuteOfDay,
             hasService = model.hasService,
-            reason = model.reason
+            reason = model.reason,
+            endDateEpochDay = model.endDateEpochDay
         )
     }
 }

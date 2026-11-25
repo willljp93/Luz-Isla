@@ -5,7 +5,6 @@ import android.os.Build
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,22 +14,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material3.Button
@@ -61,6 +70,7 @@ import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.UpdateChannelStatus
+import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.IslaEmblemBadge
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.Instant
@@ -139,7 +149,8 @@ fun TimezoneAndFormatSection(
     currentNowMillis: Long,
     onSetTimezonePreference: (Boolean, String) -> Unit,
     onOpenTimezoneDialog: () -> Unit,
-    onSetUse24HourFormat: (Boolean) -> Unit
+    onSetUse24HourFormat: (Boolean) -> Unit,
+    onSetCenterTimelineOnNow: (Boolean) -> Unit
 ) {
     val nowInstant = Instant.ofEpochMilli(currentNowMillis)
     val systemZone = ZoneId.systemDefault()
@@ -149,12 +160,7 @@ fun TimezoneAndFormatSection(
 
     SettingsSectionCard(title = "Zona horaria y formato de hora") {
         Text("Origen de zona horaria", style = MaterialTheme.typography.labelLarge)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        CenteredScrollableChipRow {
             FilterChip(
                 selected = prefs.useSystemTimezone,
                 onClick = { onSetTimezonePreference(true, prefs.manualTimezoneId) },
@@ -173,6 +179,9 @@ fun TimezoneAndFormatSection(
             FilterChip(
                 selected = !prefs.useSystemTimezone,
                 onClick = onOpenTimezoneDialog,
+                leadingIcon = {
+                    Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                },
                 label = {
                     Text(
                         text = if (!prefs.useSystemTimezone) {
@@ -239,12 +248,7 @@ fun TimezoneAndFormatSection(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
         Text("Formato de hora", style = MaterialTheme.typography.labelLarge)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        CenteredScrollableChipRow {
             FilterChip(
                 selected = !prefs.use24HourFormat,
                 onClick = { onSetUse24HourFormat(false) },
@@ -264,6 +268,33 @@ fun TimezoneAndFormatSection(
                 modifier = Modifier.testTag("settings_format_24h_chip")
             )
         }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Centrar línea de tiempo en la hora actual",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "En Hoy muestra una ventana móvil de 12 h antes y 12 h después con Ahora al centro.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+                checked = prefs.centerTimelineOnNow,
+                onCheckedChange = onSetCenterTimelineOnNow,
+                modifier = Modifier.testTag("settings_status_center_timeline_switch")
+            )
+        }
     }
 }
 
@@ -274,6 +305,7 @@ fun AppearanceSection(
     onSetDynamicColor: (Boolean) -> Unit,
     onSetEnableElectricAnimations: (Boolean) -> Unit,
     onSetBottomBarBehavior: (BottomBarBehavior) -> Unit,
+    onSetCenterTimelineOnNow: (Boolean) -> Unit,
     onSetWidgetCardStyle: (WidgetCardStyle) -> Unit,
     onOpenDayNightDialog: () -> Unit,
     onSyncSolarNow: () -> Unit,
@@ -283,22 +315,61 @@ fun AppearanceSection(
 ) {
     val p = state.prefs
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SettingsSectionCard(title = "Línea de tiempo") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Timeline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Centrar línea de tiempo en la hora actual",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "En Hoy muestra una ventana móvil de 12 h antes y 12 h después con Ahora fijo al centro.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(
+                    checked = p.centerTimelineOnNow,
+                    onCheckedChange = onSetCenterTimelineOnNow,
+                    modifier = Modifier.testTag("settings_center_timeline_switch")
+                )
+            }
+        }
+
         SettingsSectionCard(title = "Tema, animaciones y barra") {
             Text("Tema visual", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            CenteredScrollableChipRow {
                 listOf(
-                    ThemeMode.SYSTEM to "Sistema",
-                    ThemeMode.LIGHT to "Claro",
-                    ThemeMode.DARK to "Oscuro"
-                ).forEach { (mode, label) ->
+                    Triple(ThemeMode.SYSTEM, "Sistema", Icons.Filled.BrightnessAuto),
+                    Triple(ThemeMode.LIGHT, "Claro", Icons.Filled.LightMode),
+                    Triple(ThemeMode.DARK, "Oscuro", Icons.Filled.DarkMode)
+                ).forEach { (mode, label, icon) ->
                     FilterChip(
                         selected = p.themeMode == mode,
                         onClick = { onSetThemeMode(mode) },
+                        leadingIcon = {
+                            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = { Text(label, maxLines = 1, softWrap = false) }
                     )
                 }
@@ -321,16 +392,18 @@ fun AppearanceSection(
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
             Text("Comportamiento del menú inferior", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            CenteredScrollableChipRow {
                 BottomBarBehavior.entries.forEach { behavior ->
+                    val behaviorIcon = when (behavior) {
+                        BottomBarBehavior.AUTO -> Icons.Filled.SwapVert
+                        BottomBarBehavior.PILL_HANDLE -> Icons.Filled.DragHandle
+                    }
                     FilterChip(
                         selected = p.bottomBarBehavior == behavior,
                         onClick = { onSetBottomBarBehavior(behavior) },
+                        leadingIcon = {
+                            Icon(imageVector = behaviorIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = { Text(behavior.label, maxLines = 1, softWrap = false) },
                         modifier = Modifier.testTag("settings_bottom_bar_${behavior.name.lowercase()}")
                     )
@@ -345,16 +418,20 @@ fun AppearanceSection(
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
             Text("Tarjetas de widgets", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+            CenteredScrollableChipRow {
                 WidgetCardStyle.entries.forEach { style ->
+                    val styleIcon = when (style) {
+                        WidgetCardStyle.SYSTEM -> Icons.Filled.AutoAwesome
+                        WidgetCardStyle.LIGHT -> Icons.Filled.LightMode
+                        WidgetCardStyle.DARK -> Icons.Filled.DarkMode
+                        WidgetCardStyle.TRANSPARENT -> Icons.Filled.Opacity
+                    }
                     FilterChip(
                         selected = p.widgetCardStyle == style,
                         onClick = { onSetWidgetCardStyle(style) },
+                        leadingIcon = {
+                            Icon(imageVector = styleIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = { Text(style.label, maxLines = 1, softWrap = false) },
                         modifier = Modifier.testTag("settings_widget_style_${style.name.lowercase()}")
                     )
@@ -646,12 +723,23 @@ fun DataAndSyncSection(
                 value = syncUrlInput,
                 onValueChange = onSyncUrlChange,
                 label = { Text("URL HTTPS del pronóstico JSON") },
-                placeholder = { Text("https://midominio.com/horarios/configuracion.json") },
+                placeholder = { Text(com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("sync_url_input")
             )
+            if (syncUrlInput.trim() != com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) {
+                OutlinedButton(
+                    onClick = { onSyncUrlChange(com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("sync_reset_default_url_button")
+                ) {
+                    Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Usar URL GitHub predeterminada", maxLines = 1, softWrap = false)
+                }
+            }
 
             SettingSwitchRow(
                 label = "Sincronización automática de URL",
@@ -660,20 +748,18 @@ fun DataAndSyncSection(
             )
 
             val intervalOptions = listOf(
-                0 to "Al abrir la app",
-                1 to "Cada 1h",
-                24 to "Cada 24h"
+                Triple(0, "Al abrir la app", Icons.Filled.Sync),
+                Triple(1, "Cada 1h", Icons.Filled.Schedule),
+                Triple(24, "Cada 24h", Icons.Filled.Update)
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                intervalOptions.forEach { (hrs, label) ->
+            CenteredScrollableChipRow {
+                intervalOptions.forEach { (hrs, label, icon) ->
                     FilterChip(
                         selected = syncIntervalHours == hrs,
                         onClick = { onSyncIntervalChange(hrs) },
+                        leadingIcon = {
+                            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = { Text(label, maxLines = 1, softWrap = false) },
                         modifier = Modifier.testTag(
                             if (hrs == 0) "sync_interval_app_open" else "sync_interval_${hrs}h"
@@ -877,14 +963,14 @@ fun NotificationsAndAppSection(
             }
 
             Text("Anticipación del aviso", style = MaterialTheme.typography.labelLarge)
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            CenteredScrollableChipRow(spacing = 6.dp) {
                 listOf(5, 10, 15, 30).forEach { mins ->
                     FilterChip(
                         selected = p.notifyLeadMinutes == mins,
                         onClick = { ensurePermAndSave(lead = mins) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
                         label = { Text("$mins min", maxLines = 1, softWrap = false) }
                     )
                 }
