@@ -1,19 +1,4 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-import java.util.Locale
-import java.util.Properties
-
-val versionPropsFile = rootProject.file("version.properties")
-val versionProps = Properties().apply {
-  if (versionPropsFile.exists()) {
-    versionPropsFile.inputStream().use { load(it) }
-  }
-}
-val appVerYear = versionProps.getProperty("APP_VERSION_YEAR", "2026").trim().toInt()
-val appVerMonth = versionProps.getProperty("APP_VERSION_MONTH", "11").trim().toInt()
-val appVerDay = versionProps.getProperty("APP_VERSION_DAY", "23").trim().toInt()
-val appVerBuild = versionProps.getProperty("APP_VERSION_BUILD", "1").trim().toInt()
-val computedVersionName = String.format(Locale.US, "%d.%02d.%02d.%d", appVerYear, appVerMonth, appVerDay, appVerBuild)
-val computedVersionCode = ((appVerYear % 100) * 1_000_000) + (appVerMonth * 10_000) + (appVerDay * 100) + appVerBuild.coerceIn(1, 99)
 
 plugins {
   alias(libs.plugins.android.application)
@@ -32,8 +17,8 @@ android {
     applicationId = "com.aistudio.luzisla.ijvapp"
     minSdk = 24
     targetSdk = 36
-    versionCode = computedVersionCode
-    versionName = computedVersionName
+    versionCode = 26112502
+    versionName = "2026.11.25.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
