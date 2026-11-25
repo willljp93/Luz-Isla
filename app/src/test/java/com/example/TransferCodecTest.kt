@@ -169,10 +169,10 @@ class TransferCodecTest {
 
     @Test
     fun `default github config file decodes cleanly with 19 circuits and exact checksum`() {
-        val candidateA = File("../luz_isla_config_2026.11.24.1.json")
-        val candidateB = File("luz_isla_config_2026.11.24.1.json")
+        val candidateA = File("../Conf Circuitos/luz_isla_config_2026.11.24.1.json")
+        val candidateB = File("Conf Circuitos/luz_isla_config_2026.11.24.1.json")
         val configFile = if (candidateA.exists()) candidateA else candidateB
-        assertTrue("Expected luz_isla_config_2026.11.24.1.json to exist", configFile.exists())
+        assertTrue("Expected Conf Circuitos/luz_isla_config_2026.11.24.1.json to exist", configFile.exists())
 
         val rawText = configFile.readText(Charsets.UTF_8)
         val decoded = ConfigCodec.decodeFromJson(rawText, verifySha256 = true)
@@ -212,12 +212,16 @@ class TransferCodecTest {
     }
 
     @Test
-    fun `normalizeSyncUrl rewrites github blob links to raw githubusercontent`() {
+    fun `normalizeSyncUrl rewrites github blob links, encodes spaces, and migrates legacy URL`() {
         assertEquals(
-            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/luz_isla_config_2026.11.24.1.json",
+            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json",
             HttpsSyncManager.normalizeSyncUrl(
-                "https://github.com/willljp93/Luz-Isla/blob/main/luz_isla_config_2026.11.24.1.json"
+                "https://github.com/willljp93/Luz-Isla/blob/main/Conf Circuitos/luz_isla_config_2026.11.24.1.json"
             )
+        )
+        assertEquals(
+            HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,
+            HttpsSyncManager.normalizeSyncUrl(HttpsSyncManager.LEGACY_GITHUB_SYNC_URL)
         )
         assertEquals(
             HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,

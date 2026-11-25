@@ -141,8 +141,11 @@ class HttpsSyncManager(
     }
 
     companion object {
-        const val DEFAULT_GITHUB_SYNC_URL =
+        const val LEGACY_GITHUB_SYNC_URL =
             "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/luz_isla_config_2026.11.24.1.json"
+
+        const val DEFAULT_GITHUB_SYNC_URL =
+            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json"
 
         private val GITHUB_BLOB_REGEX =
             Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$", RegexOption.IGNORE_CASE)
@@ -151,11 +154,17 @@ class HttpsSyncManager(
             val trimmed = rawUrl.trim()
             if (trimmed.isEmpty()) return ""
             val match = GITHUB_BLOB_REGEX.matchEntire(trimmed)
-            return if (match != null) {
+            val resolved = if (match != null) {
                 val (owner, repo, branchAndPath) = match.destructured
                 "https://raw.githubusercontent.com/$owner/$repo/$branchAndPath"
             } else {
                 trimmed
+            }
+            val encoded = resolved.replace(" ", "%20")
+            return if (encoded.equals(LEGACY_GITHUB_SYNC_URL, ignoreCase = true)) {
+                DEFAULT_GITHUB_SYNC_URL
+            } else {
+                encoded
             }
         }
     }

@@ -78,17 +78,28 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Apply Custom Package ID (if configured via vars.CUSTOM_APP_ID)
-        if: vars.CUSTOM_APP_ID != ''
+      - name: Resolve & Apply Package ID (vars.CUSTOM_APP_ID)
+        id: pkg_id
         env:
           CUSTOM_APP_ID: ${{ vars.CUSTOM_APP_ID }}
         run: |
-          if ! echo "$CUSTOM_APP_ID" | grep -Eq '^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$'; then
-            echo "::error::CUSTOM_APP_ID ('$CUSTOM_APP_ID') no es un ID de paquete Android válido. Cada segmento separado por puntos debe empezar con una letra (ej: com.are3.luzisla.ijvapp)."
-            exit 1
+          if [ -n "$CUSTOM_APP_ID" ]; then
+            if ! echo "$CUSTOM_APP_ID" | grep -Eq '^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$'; then
+              echo "::error::CUSTOM_APP_ID ('$CUSTOM_APP_ID') no es un ID de paquete Android válido. Cada segmento separado por puntos debe empezar con una letra (ej: com.threeare.luzisla)."
+              exit 1
+            fi
+            sed -i "s/applicationId = \"com.aistudio.luzisla.ijvapp\"/applicationId = \"${CUSTOM_APP_ID}\"/" app/build.gradle.kts
+            if ! grep -q "applicationId = \"${CUSTOM_APP_ID}\"" app/build.gradle.kts; then
+              echo "::error::No se pudo aplicar CUSTOM_APP_ID='${CUSTOM_APP_ID}' en app/build.gradle.kts"
+              exit 1
+            fi
+            echo "app_id=${CUSTOM_APP_ID}" >> "$GITHUB_OUTPUT"
+            echo "Using custom CI applicationId: ${CUSTOM_APP_ID}"
+          else
+            DEFAULT_APP_ID=$(sed -n 's/.*applicationId[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
+            echo "app_id=${DEFAULT_APP_ID}" >> "$GITHUB_OUTPUT"
+            echo "Using default applicationId: ${DEFAULT_APP_ID}"
           fi
-          sed -i "s/applicationId = \"com.aistudio.luzisla.ijvapp\"/applicationId = \"${CUSTOM_APP_ID}\"/" app/build.gradle.kts
-          echo "Using custom CI applicationId: ${CUSTOM_APP_ID}"
 
       - name: Run Unit & Robolectric Tests
         run: gradle :app:testDebugUnitTest
@@ -154,6 +165,7 @@ jobs:
 
             - **Versión:** `${{ steps.app_version.outputs.version_name }}`
             - **Código de compilación (`versionCode`):** `${{ steps.app_version.outputs.version_code }}`
+            - **ID de paquete:** `${{ steps.pkg_id.outputs.app_id }}`
             - **Tipo de firma:** `${{ steps.build_apk.outputs.build_variant }}`
             - **APK recomendado para la mayoría de teléfonos modernos:** `LuzIsla-v${{ steps.app_version.outputs.version_name }}-arm64-v8a.apk` o `LuzIsla-v${{ steps.app_version.outputs.version_name }}-universal.apk`
           files: |

@@ -219,6 +219,7 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
             lastExportIsoDate = prefs[Keys.LAST_EXPORT_ISO_DATE].orEmpty(),
             lastExportDayBuild = prefs[Keys.LAST_EXPORT_DAY_BUILD] ?: 0,
             syncUrl = prefs[Keys.SYNC_URL]?.takeIf { it.isNotBlank() }
+                ?.let { com.example.sync.HttpsSyncManager.normalizeSyncUrl(it) }
                 ?: com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL,
             autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: true,
             syncIntervalHours = normalizeSyncInterval(prefs[Keys.SYNC_INTERVAL_HOURS] ?: 0),
