@@ -462,7 +462,7 @@ object ScheduleEngine {
                             endMillis = minOf(e, rangeEndMillis),
                             state = if (isService) ScheduledState.SERVICE_SCHEDULED else ScheduledState.OUTAGE_SCHEDULED,
                             source = RuleSource.EXPLICIT_FORECAST,
-                            label = if (isService) "Pronóstico: Con servicio" else "Pronóstico: Sin servicio",
+                            label = if (isService) "Programado: Con servicio" else "Programado: Sin servicio",
                             notes = fc.notes,
                             isHistoricalTest = fc.isHistoricalTest,
                             priority = 2

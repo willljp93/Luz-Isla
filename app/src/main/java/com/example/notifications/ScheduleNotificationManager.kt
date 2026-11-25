@@ -48,10 +48,10 @@ object ScheduleNotificationManager {
             }
             val updatesChannel = NotificationChannel(
                 CHANNEL_UPDATES,
-                "Actualizaciones de pronósticos",
+                "Actualizaciones de configuración",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Avisos cuando se descarga un nuevo pronóstico."
+                description = "Avisos cuando se descarga una nueva configuración de circuitos."
             }
             nm.createNotificationChannel(alertsChannel)
             nm.createNotificationChannel(updatesChannel)
@@ -221,7 +221,7 @@ object ScheduleNotificationManager {
             context = context,
             notificationId = 9001,
             channelId = CHANNEL_UPDATES,
-            title = "Nuevo pronóstico disponible (v$version)",
+            title = "Nueva configuración disponible (v$version)",
             body = "Se actualizó la programación para $circuitCount circuitos conservando tus favoritos y nombres."
         )
     }

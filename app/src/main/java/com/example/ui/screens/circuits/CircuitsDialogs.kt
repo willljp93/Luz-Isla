@@ -627,7 +627,7 @@ fun RelationEditorDialog(
                 if (type != RelationType.INFORMATIVA) {
                     SwitchRow("Aplicar sincronización automática", syncEnabled) { syncEnabled = it }
                     Text(
-                        text = "Si está activa, anula el grupo rotativo o regla fija del circuito dependiente (debajo de excepciones manuales y pronósticos).",
+                        text = "Si está activa, anula el grupo rotativo o regla fija del circuito dependiente (debajo de excepciones manuales y horarios por fecha).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

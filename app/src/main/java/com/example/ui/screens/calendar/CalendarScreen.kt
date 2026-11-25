@@ -662,7 +662,7 @@ private fun NoForecastNoticeCard(date: LocalDate) {
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "No existe pronóstico registrado para el ${ScheduleEngine.formatShortDate(date)} en los circuitos sin horario fijo o grupo asignado. La app no inventa horarios.",
+                text = "No hay horarios programados para el ${ScheduleEngine.formatShortDate(date)} en los circuitos sin regla fija o grupo asignado. La app no inventa horarios.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

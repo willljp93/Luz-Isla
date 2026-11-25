@@ -214,19 +214,19 @@ object WidgetUpdateHelper {
                     "CON SERVICIO",
                     palette.servicePillRes,
                     palette.serviceAccent,
-                    eval.remainingMillis?.let { "Faltan ${ScheduleEngine.formatDurationHms(it)}" } ?: "En servicio"
+                    eval.remainingMillis?.let { "Quedan ${ScheduleEngine.formatDurationHms(it)}" } ?: "En servicio"
                 )
                 ScheduledState.OUTAGE_SCHEDULED -> QuadValue(
                     "SIN SERVICIO",
                     palette.outagePillRes,
                     palette.outageAccent,
-                    eval.remainingMillis?.let { "Restablece en ${ScheduleEngine.formatDurationHms(it)}" } ?: "Afectado"
+                    eval.remainingMillis?.let { "Faltan ${ScheduleEngine.formatDurationHms(it)}" } ?: "Afectado"
                 )
                 ScheduledState.UNKNOWN -> QuadValue(
                     "SIN INFO",
                     palette.unknownPillRes,
                     palette.unknownAccent,
-                    "Sin pronóstico"
+                    "Sin horario"
                 )
             }
 

@@ -215,8 +215,28 @@ class AppUpdateServiceTest {
         val channels = AppUpdateService.defaultDistributionChannels()
         assertEquals(UpdateChannelStatus.ACTIVE, channels.first { it.id == "github" }.status)
         assertEquals(
-            setOf("play_store", "apklis", "telegram", "whatsapp"),
+            setOf("apklis", "telegram", "whatsapp"),
             channels.filter { it.status == UpdateChannelStatus.COMING_SOON }.map { it.id }.toSet()
         )
+    }
+
+    @Test
+    fun `formatReleaseNotesForDisplay strips raw markdown tokens cleanly`() {
+        val raw = """
+            ### **Luz Isla v2026.11.25.2** (`26112502`)
+            - Mejora en **Actualizaciones** y `Configuración JSON`.
+            * Revisar [GitHub Releases](https://github.com/willljp93/Luz-Isla/releases)
+            ---
+            > Nota importante
+        """.trimIndent()
+
+        val cleaned = AppUpdateService.formatReleaseNotesForDisplay(raw)
+        assertFalse(cleaned.contains("**"))
+        assertFalse(cleaned.contains("`"))
+        assertFalse(cleaned.contains("###"))
+        assertTrue(cleaned.contains("Luz Isla v2026.11.25.2 (26112502)"))
+        assertTrue(cleaned.contains("• Mejora en Actualizaciones y Configuración JSON."))
+        assertTrue(cleaned.contains("• Revisar GitHub Releases"))
+        assertTrue(cleaned.contains("Nota importante"))
     }
 }

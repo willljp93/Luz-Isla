@@ -295,7 +295,7 @@ class SettingsViewModel(
                 append("Comprobación completada: ")
                 append("Sol (${report.solarStatus}) • App (${report.updateStatus})")
                 if (report.forecastUpdated) {
-                    append(" • Pronóstico actualizado")
+                    append(" • Configuración actualizada")
                 }
             }
         }
@@ -390,7 +390,7 @@ class SettingsViewModel(
                     ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
                     WidgetUpdateHelper.refreshAllWidgets(appContext)
                     val verLabel = outcome.versionName.ifBlank { outcome.version.toString() }
-                    feedbackMessage.value = "Pronóstico actualizado (v$verLabel): ${outcome.circuitCount} circuitos."
+                    feedbackMessage.value = "Configuración actualizada (v$verLabel): ${outcome.circuitCount} circuitos."
                 }
                 is SyncOutcome.UpToDate -> {
                     val verLabel = outcome.versionName.ifBlank { "v${outcome.version}" }

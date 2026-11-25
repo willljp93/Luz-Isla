@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -149,8 +152,7 @@ fun TimezoneAndFormatSection(
     currentNowMillis: Long,
     onSetTimezonePreference: (Boolean, String) -> Unit,
     onOpenTimezoneDialog: () -> Unit,
-    onSetUse24HourFormat: (Boolean) -> Unit,
-    onSetCenterTimelineOnNow: (Boolean) -> Unit
+    onSetUse24HourFormat: (Boolean) -> Unit
 ) {
     val nowInstant = Instant.ofEpochMilli(currentNowMillis)
     val systemZone = ZoneId.systemDefault()
@@ -266,33 +268,6 @@ fun TimezoneAndFormatSection(
                 },
                 label = { Text("24 horas", maxLines = 1, softWrap = false) },
                 modifier = Modifier.testTag("settings_format_24h_chip")
-            )
-        }
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Centrar línea de tiempo en la hora actual",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "En Hoy muestra una ventana móvil de 12 h antes y 12 h después con Ahora al centro.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-                checked = prefs.centerTimelineOnNow,
-                onCheckedChange = onSetCenterTimelineOnNow,
-                modifier = Modifier.testTag("settings_status_center_timeline_switch")
             )
         }
     }
@@ -682,7 +657,7 @@ fun DataAndSyncSection(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    UnifiedStatusRow("Configuración JSON (URL)", p.lastUnifiedJsonStatus)
+                    UnifiedStatusRow("Configuración JSON", p.lastUnifiedJsonStatus)
                     UnifiedStatusRow("Horarios solares", p.lastUnifiedSolarStatus)
                     UnifiedStatusRow("Versión de la app", p.lastUnifiedUpdateStatus)
                     if (p.lastUnifiedCheckEpochMillis > 0L) {
@@ -722,7 +697,7 @@ fun DataAndSyncSection(
             OutlinedTextField(
                 value = syncUrlInput,
                 onValueChange = onSyncUrlChange,
-                label = { Text("URL HTTPS del pronóstico JSON") },
+                label = { Text("URL HTTPS de la configuración JSON") },
                 placeholder = { Text(com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) },
                 singleLine = true,
                 modifier = Modifier
@@ -955,7 +930,7 @@ fun NotificationsAndAppSection(
             SettingSwitchRow("Aviso de próximo restablecimiento", p.notifyNextRestore) {
                 ensurePermAndSave(restore = it)
             }
-            SettingSwitchRow("Aviso de nuevo pronóstico descargado", p.notifyNewForecast) {
+            SettingSwitchRow("Aviso de nueva configuración de circuitos", p.notifyNewForecast) {
                 ensurePermAndSave(forecast = it)
             }
             SettingSwitchRow("Solo para mis circuitos favoritos", p.notifyFavoritesOnly) {
@@ -978,46 +953,67 @@ fun NotificationsAndAppSection(
         }
 
         SettingsSectionCard(title = "Actualizaciones y descargas") {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Versión instalada: v${AppVersionConfig.APP_VERSION_NAME}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Código interno: ${AppVersionConfig.APP_VERSION_CODE} • ${p.latestKnownStatus}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (state.updateAvailable) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (state.updateAvailable) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerHighest
-                    }
+                Text(
+                    text = "Versión instalada: v${AppVersionConfig.APP_VERSION_NAME}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = JetBrainsMonoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    softWrap = true
+                )
+                Text(
+                    text = "Código interno: ${AppVersionConfig.APP_VERSION_CODE}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = if (state.updateAvailable) {
-                            "Disponible ${AppUpdateService.normalizeVersionLabel(p.latestKnownTag)}"
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (state.updateAvailable) {
+                            MaterialTheme.colorScheme.primaryContainer
                         } else {
-                            "v${AppVersionConfig.APP_VERSION_NAME}"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        }
+                    ) {
+                        Text(
+                            text = if (state.updateAvailable) {
+                                "Disponible ${AppUpdateService.normalizeVersionLabel(p.latestKnownTag)}"
+                            } else {
+                                "Al día • v${AppVersionConfig.APP_VERSION_NAME}"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (state.updateAvailable) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    if (p.latestKnownStatus.isNotBlank()) {
+                        Text(
+                            text = p.latestKnownStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (state.updateAvailable) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            softWrap = true,
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        )
+                    }
                 }
             }
 
@@ -1029,7 +1025,11 @@ fun NotificationsAndAppSection(
                 )
             }
 
-            if (state.updateAvailable && p.latestKnownNotes.isNotBlank()) {
+            val cleanReleaseTitle = AppUpdateService.formatReleaseNotesForDisplay(
+                p.latestKnownTitle.ifBlank { p.latestKnownTag }
+            )
+            val cleanReleaseNotes = AppUpdateService.formatReleaseNotesForDisplay(p.latestKnownNotes)
+            if (state.updateAvailable && cleanReleaseNotes.isNotBlank()) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceContainer,
@@ -1040,14 +1040,16 @@ fun NotificationsAndAppSection(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = p.latestKnownTitle.ifBlank { p.latestKnownTag },
+                            text = cleanReleaseTitle.ifBlank { p.latestKnownTag },
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            softWrap = true
                         )
                         Text(
-                            text = p.latestKnownNotes,
+                            text = cleanReleaseNotes,
                             style = MaterialTheme.typography.bodySmall,
-                            maxLines = 4,
+                            maxLines = 6,
+                            softWrap = true,
                             overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1204,7 +1206,7 @@ fun NotificationsAndAppSection(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Esta aplicación NO es una aplicación oficial de la Empresa Eléctrica ni realiza mediciones en tiempo real de la red. Todos los estados mostrados corresponden a pronósticos y reglas programadas configuradas localmente o sincronizadas mediante archivo JSON.",
+                        text = "Esta aplicación NO es una aplicación oficial de la Empresa Eléctrica ni realiza mediciones en tiempo real de la red. Todos los estados mostrados corresponden a horarios y reglas programadas configuradas localmente o sincronizadas mediante archivo JSON.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1218,13 +1220,13 @@ fun NotificationsAndAppSection(
 private fun UnifiedStatusRow(title: String, status: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1.05f)
         ) {
             Icon(
                 Icons.Filled.CheckCircle,
@@ -1236,17 +1238,20 @@ private fun UnifiedStatusRow(title: String, status: String) {
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
+                maxLines = 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = status,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            softWrap = true,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.95f)
         )
     }
 }

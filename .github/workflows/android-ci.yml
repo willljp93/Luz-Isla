@@ -78,6 +78,18 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Apply Custom Package ID (if configured via vars.CUSTOM_APP_ID)
+        if: vars.CUSTOM_APP_ID != ''
+        env:
+          CUSTOM_APP_ID: ${{ vars.CUSTOM_APP_ID }}
+        run: |
+          if ! echo "$CUSTOM_APP_ID" | grep -Eq '^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$'; then
+            echo "::error::CUSTOM_APP_ID ('$CUSTOM_APP_ID') no es un ID de paquete Android válido. Cada segmento separado por puntos debe empezar con una letra (ej: com.are3.luzisla.ijvapp)."
+            exit 1
+          fi
+          sed -i "s/applicationId = \"com.aistudio.luzisla.ijvapp\"/applicationId = \"${CUSTOM_APP_ID}\"/" app/build.gradle.kts
+          echo "Using custom CI applicationId: ${CUSTOM_APP_ID}"
+
       - name: Run Unit & Robolectric Tests
         run: gradle :app:testDebugUnitTest
 
@@ -105,30 +117,28 @@ jobs:
         run: |
           mkdir -p release-apks
           VNAME="${{ steps.app_version.outputs.version_name }}"
-          VCODE="${{ steps.app_version.outputs.version_code }}"
-          VARIANT="${{ steps.build_apk.outputs.build_variant }}"
           APK_DIR="${{ steps.build_apk.outputs.apk_dir }}"
 
           for apk in "$APK_DIR"/*.apk; do
             base=$(basename "$apk")
             if echo "$base" | grep -q "universal"; then
-              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-universal.apk"
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-universal.apk"
             elif echo "$base" | grep -q "arm64-v8a"; then
-              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-arm64-v8a.apk"
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-arm64-v8a.apk"
             elif echo "$base" | grep -q "armeabi-v7a"; then
-              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-armeabi-v7a.apk"
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-armeabi-v7a.apk"
             else
-              cp "$apk" "release-apks/LuzIsla-v${VNAME}-b${VCODE}-${VARIANT}-${base}"
+              cp "$apk" "release-apks/LuzIsla-v${VNAME}-${base}"
             fi
           done
 
-          (cd release-apks && sha256sum *.apk > "LuzIsla-v${VNAME}-b${VCODE}-sha256.txt")
+          (cd release-apks && sha256sum *.apk > "LuzIsla-v${VNAME}-sha256.txt")
           ls -lh release-apks
 
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: luz-isla-v${{ steps.app_version.outputs.version_name }}-b${{ steps.app_version.outputs.version_code }}
+          name: luz-isla-v${{ steps.app_version.outputs.version_name }}
           path: release-apks/*.apk
 
       - name: Publish GitHub Release
@@ -145,7 +155,7 @@ jobs:
             - **Versión:** `${{ steps.app_version.outputs.version_name }}`
             - **Código de compilación (`versionCode`):** `${{ steps.app_version.outputs.version_code }}`
             - **Tipo de firma:** `${{ steps.build_apk.outputs.build_variant }}`
-            - **APK recomendado para la mayoría de teléfonos modernos:** `*-arm64-v8a.apk` o `*-universal.apk`
+            - **APK recomendado para la mayoría de teléfonos modernos:** `LuzIsla-v${{ steps.app_version.outputs.version_name }}-arm64-v8a.apk` o `LuzIsla-v${{ steps.app_version.outputs.version_name }}-universal.apk`
           files: |
             release-apks/*.apk
             release-apks/*.txt

@@ -58,14 +58,28 @@ import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.roundToLong
 import kotlin.math.sin
+
+internal data class TimelineAxisTick(
+    val epochMillis: Long,
+    val fraction: Float,
+    val label: String?,
+    val isMajor: Boolean,
+    val isMidnight: Boolean,
+    val dayDate: LocalDate,
+    val isPrimaryDay: Boolean
+)
 
 private data class TimelineSegSpan(
     val seg: TimelineSegment,
@@ -513,36 +527,117 @@ fun Timeline24hBar(
         }
 
         if (showHourAxis) {
-            Spacer(modifier = Modifier.height(4.dp))
-            val axisLabels = remember(isCustomWindow, dayStart, dayEnd, use24h, zoneId) {
-                if (!isCustomWindow) {
-                    if (use24h) {
-                        listOf("00", "04", "08", "12", "16", "20", "24")
-                    } else {
-                        listOf("12am", "4am", "8am", "12pm", "4pm", "8pm", "12am")
-                    }
+            Spacer(modifier = Modifier.height(2.dp))
+            val primaryDate = remember(isCustomWindow, date, currentTimeMillis, dayStart, dayEnd, zoneId) {
+                if (isCustomWindow) {
+                    val refMillis = currentTimeMillis ?: (dayStart + (dayEnd - dayStart) / 2L)
+                    Instant.ofEpochMilli(refMillis).atZone(zoneId).toLocalDate()
                 } else {
-                    val span = (dayEnd - dayStart).coerceAtLeast(1L)
-                    (0..6).map { idx ->
-                        val tickMillis = dayStart + ((span * idx) / 6.0).roundToLong()
-                        formatAxisTickLabel(tickMillis, zoneId, use24h)
-                    }
+                    date
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+            val axisTicks = remember(dayStart, dayEnd, primaryDate, isCustomWindow, use24h, zoneId) {
+                buildTimelineAxisTicks(
+                    windowStartMillis = dayStart,
+                    windowEndMillis = dayEnd,
+                    primaryDate = primaryDate,
+                    isCustomWindow = isCustomWindow,
+                    use24h = use24h,
+                    zoneId = zoneId
+                )
+            }
+            val textMeasurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val axisHeight = remember(density.fontScale) {
+                10.dp + (16.dp * density.fontScale.coerceAtLeast(1f))
+            }
+            val baseLabelStyle = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp
+            )
+            val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+            val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
+            val primaryColor = MaterialTheme.colorScheme.primary
+
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 2.dp)
+                    .height(axisHeight)
             ) {
-                axisLabels.forEach { hour ->
-                    Text(
-                        text = hour,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = if (isCustomWindow) 10.sp else 11.sp
-                        ),
-                        maxLines = 1,
-                        softWrap = false,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                val w = size.width
+                if (w <= 0f) return@Canvas
+
+                val minorTickHeight = 3.5.dp.toPx()
+                val majorTickHeight = 6.5.dp.toPx()
+                val midnightTickHeight = 8.dp.toPx()
+                val labelTopY = 8.dp.toPx()
+
+                axisTicks.forEach { tick ->
+                    val x = (tick.fraction * w).coerceIn(0.5.dp.toPx(), (w - 0.5.dp.toPx()).coerceAtLeast(0.5.dp.toPx()))
+                    val highlightMidnight = isCustomWindow && tick.isMidnight
+
+                    val tickHeight = when {
+                        highlightMidnight -> midnightTickHeight
+                        tick.isMajor -> majorTickHeight
+                        else -> minorTickHeight
+                    }
+                    val tickStroke = when {
+                        highlightMidnight -> 2.dp.toPx()
+                        tick.isMajor -> 1.4.dp.toPx()
+                        else -> 1.dp.toPx()
+                    }
+                    val tickColor = when {
+                        highlightMidnight -> primaryColor.copy(alpha = 0.92f)
+                        tick.isMajor && tick.isPrimaryDay -> onSurfaceColor.copy(alpha = 0.72f)
+                        tick.isMajor -> onSurfaceVariantColor.copy(alpha = 0.42f)
+                        tick.isPrimaryDay -> onSurfaceColor.copy(alpha = 0.34f)
+                        else -> onSurfaceVariantColor.copy(alpha = 0.20f)
+                    }
+
+                    drawLine(
+                        color = tickColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x, tickHeight),
+                        strokeWidth = tickStroke,
+                        cap = StrokeCap.Round
                     )
+
+                    if (highlightMidnight && !tick.isMajor) {
+                        drawCircle(
+                            color = primaryColor.copy(alpha = 0.92f),
+                            radius = 1.6.dp.toPx(),
+                            center = Offset(x, midnightTickHeight + 2.2.dp.toPx())
+                        )
+                    }
+
+                    val labelText = tick.label
+                    if (labelText != null) {
+                        val labelColor = when {
+                            highlightMidnight -> primaryColor
+                            tick.isPrimaryDay -> onSurfaceColor.copy(alpha = 0.94f)
+                            else -> onSurfaceVariantColor.copy(alpha = 0.54f)
+                        }
+                        val labelWeight = when {
+                            highlightMidnight -> FontWeight.Bold
+                            tick.isPrimaryDay -> FontWeight.SemiBold
+                            else -> FontWeight.Normal
+                        }
+                        val measured = textMeasurer.measure(
+                            text = labelText,
+                            style = baseLabelStyle.copy(
+                                color = labelColor,
+                                fontWeight = labelWeight
+                            ),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        val textW = measured.size.width.toFloat()
+                        val textX = (x - textW / 2f).coerceIn(0f, (w - textW).coerceAtLeast(0f))
+                        drawText(
+                            textLayoutResult = measured,
+                            topLeft = Offset(textX, labelTopY)
+                        )
+                    }
                 }
             }
         }
@@ -612,7 +707,7 @@ fun TimelineSegmentDetailCard(
 
     val sourceLabel = when (segment.source) {
         RuleSource.MANUAL_EXCEPTION -> "Excepción manual"
-        RuleSource.EXPLICIT_FORECAST -> if (segment.isHistoricalTest) "Pronóstico histórico de prueba" else "Pronóstico explícito"
+        RuleSource.EXPLICIT_FORECAST -> if (segment.isHistoricalTest) "Horario histórico de prueba" else "Horario por fecha"
         RuleSource.FIXED_RULE -> "Horario fijo"
         RuleSource.ROTATING_GROUP -> "Ciclo rotativo"
         RuleSource.SYNCHRONIZED_RELATION -> "Relación sincronizada"
@@ -731,20 +826,62 @@ private fun smoothStep(t: Float): Float {
     return c * c * (3f - 2f * c)
 }
 
-private fun formatAxisTickLabel(
-    epochMillis: Long,
-    zoneId: ZoneId,
-    use24h: Boolean
-): String {
-    val zdt = Instant.ofEpochMilli(epochMillis).atZone(zoneId)
-    val hour = zdt.hour
-    val minute = zdt.minute
-    return if (use24h) {
-        if (minute == 0) {
-            String.format(Locale.US, "%02d", hour)
+internal fun buildTimelineAxisTicks(
+    windowStartMillis: Long,
+    windowEndMillis: Long,
+    primaryDate: LocalDate,
+    isCustomWindow: Boolean,
+    use24h: Boolean,
+    zoneId: ZoneId
+): List<TimelineAxisTick> {
+    val span = (windowEndMillis - windowStartMillis).coerceAtLeast(1L).toFloat()
+    var cursor = Instant.ofEpochMilli(windowStartMillis).atZone(zoneId).truncatedTo(ChronoUnit.HOURS)
+    if (cursor.toInstant().toEpochMilli() < windowStartMillis) {
+        cursor = cursor.plusHours(1)
+    }
+
+    val hourInstants = mutableListOf<java.time.ZonedDateTime>()
+    while (cursor.toInstant().toEpochMilli() <= windowEndMillis) {
+        hourInstants += cursor
+        cursor = cursor.plusHours(1)
+    }
+
+    return hourInstants.mapIndexed { idx, zdt ->
+        val millis = zdt.toInstant().toEpochMilli()
+        val frac = ((millis - windowStartMillis).toFloat() / span).coerceIn(0f, 1f)
+        val isMajor = idx % 4 == 0
+        val isMidnight = zdt.hour == 0
+        val isDayEndMidnight = !isCustomWindow && idx == hourInstants.lastIndex && zdt.hour == 0
+        val label = if (isMajor) {
+            formatAxisHourLabel(
+                hour = zdt.hour,
+                use24h = use24h,
+                isDayEndMidnight = isDayEndMidnight
+            )
         } else {
-            String.format(Locale.US, "%02d:%02d", hour, minute)
+            null
         }
+        val dayDate = zdt.toLocalDate()
+        val isPrimaryDay = !isCustomWindow || dayDate == primaryDate
+        TimelineAxisTick(
+            epochMillis = millis,
+            fraction = frac,
+            label = label,
+            isMajor = isMajor,
+            isMidnight = isMidnight,
+            dayDate = dayDate,
+            isPrimaryDay = isPrimaryDay
+        )
+    }
+}
+
+internal fun formatAxisHourLabel(
+    hour: Int,
+    use24h: Boolean,
+    isDayEndMidnight: Boolean = false
+): String {
+    return if (use24h) {
+        if (isDayEndMidnight) "24h" else String.format(Locale.US, "%02dh", hour)
     } else {
         val h12 = when {
             hour == 0 -> 12
@@ -752,11 +889,7 @@ private fun formatAxisTickLabel(
             else -> hour
         }
         val suffix = if (hour < 12) "am" else "pm"
-        if (minute == 0) {
-            "$h12$suffix"
-        } else {
-            String.format(Locale.US, "%d:%02d%s", h12, minute, suffix)
-        }
+        "$h12$suffix"
     }
 }
 

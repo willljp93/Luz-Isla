@@ -525,7 +525,7 @@ fun CircuitsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Text(
-                                            text = "Prioridad: Excepciones manuales > Pronósticos explícitos > Relación sincronizada > Grupo rotativo / Horario fijo.",
+                                            text = "Prioridad: Excepciones manuales > Horarios por fecha > Relación sincronizada > Grupo rotativo / Horario fijo.",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.primary
                                         )

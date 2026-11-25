@@ -191,8 +191,7 @@ fun SettingsScreen(
                                 currentNowMillis = currentNowMillis,
                                 onSetTimezonePreference = viewModel::setTimezonePreference,
                                 onOpenTimezoneDialog = { showTimezoneDialog = true },
-                                onSetUse24HourFormat = viewModel::setUse24HourFormat,
-                                onSetCenterTimelineOnNow = viewModel::setCenterTimelineOnNow
+                                onSetUse24HourFormat = viewModel::setUse24HourFormat
                             )
                         }
                     }

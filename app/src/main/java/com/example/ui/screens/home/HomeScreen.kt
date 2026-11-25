@@ -684,8 +684,9 @@ private fun RichCircuitCard(
                 }
 
                 if (eval.remainingMillis != null && eval.state != ScheduledState.UNKNOWN) {
+                    val remainingPrefix = if (eval.state == ScheduledState.SERVICE_SCHEDULED) "Quedan" else "Faltan"
                     Text(
-                        text = "Faltan ${ScheduleEngine.formatDurationHms(eval.remainingMillis)}",
+                        text = "$remainingPrefix ${ScheduleEngine.formatDurationHms(eval.remainingMillis)}",
                         style = MaterialTheme.typography.labelLarge,
                         fontFamily = JetBrainsMonoFontFamily,
                         color = accent,

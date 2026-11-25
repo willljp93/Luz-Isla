@@ -165,7 +165,7 @@ fun ImportReviewDialog(
                 Text("• Circuitos: ${s.circuitCount}")
                 Text("• Ciclos: ${s.cycleCount} • Grupos: ${s.groupCount}")
                 Text("• Horarios fijos: ${s.fixedRuleCount}")
-                Text("• Pronósticos por fecha: ${s.forecastCount}")
+                Text("• Horarios por fecha: ${s.forecastCount}")
                 Text("• Excepciones: ${s.exceptionCount} • Relaciones: ${s.relationCount}")
                 Text(
                     text = if (s.sha256Verified) "Integridad SHA-256: Verificada correctamente" else "Integridad SHA-256: No incluida en JSON externo",

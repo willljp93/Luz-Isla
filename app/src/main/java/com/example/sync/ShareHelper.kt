@@ -46,7 +46,7 @@ object ShareHelper {
             "🔜 Próximo servicio: Sin datos registrados"
         }
         val comment = if (eval.circuit.comment.isNotBlank()) "📍 ${eval.circuit.comment}" else ""
-        return listOf(header, comment, stateLabel, currentWindow, remaining, nextService, "\n_Pronóstico programado, sujeto a cambios de red._")
+        return listOf(header, comment, stateLabel, currentWindow, remaining, nextService, "\n_Horario programado, sujeto a cambios de red._")
             .filter { it.isNotBlank() }
             .joinToString("\n")
     }
@@ -95,7 +95,7 @@ object ShareHelper {
                 val startDay = Instant.ofEpochMilli(eval.nextServiceStartMillis).atZone(zoneId).toLocalDate()
                 "${ScheduleEngine.formatShortDate(startDay)} ${ScheduleEngine.formatTime(eval.nextServiceStartMillis, use24h, zoneId)}–${ScheduleEngine.formatTime(eval.nextServiceEndMillis, use24h, zoneId)}"
             } else {
-                "Sin pronóstico próximo"
+                "Sin horario próximo"
             }
             "• *${eval.circuit.displayTitle()}*: $nextStr"
         }

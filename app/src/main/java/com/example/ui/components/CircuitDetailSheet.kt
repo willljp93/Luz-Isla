@@ -230,7 +230,7 @@ fun CircuitDetailBottomSheet(
 
             val groupText = evaluation.group?.name ?: when (circuit.scheduleType) {
                 ScheduleType.FIXED -> "Horario fijo"
-                ScheduleType.CUSTOM -> "Pronóstico personalizado"
+                ScheduleType.CUSTOM -> "Horario personalizado"
                 ScheduleType.ROTATING -> "Grupo rotativo sin asignar"
                 ScheduleType.NONE -> "Sin grupo asignado"
             }
@@ -298,9 +298,10 @@ fun CircuitDetailBottomSheet(
                         }
                     }
 
-                    if (evaluation.remainingMillis != null) {
+                    if (evaluation.remainingMillis != null && evaluation.state != ScheduledState.UNKNOWN) {
+                        val remainingPrefix = if (evaluation.state == ScheduledState.SERVICE_SCHEDULED) "Quedan" else "Faltan"
                         Text(
-                            text = "Tiempo restante: ${ScheduleEngine.formatDurationHms(evaluation.remainingMillis)}",
+                            text = "$remainingPrefix ${ScheduleEngine.formatDurationHms(evaluation.remainingMillis)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontFamily = JetBrainsMonoFontFamily,
                             color = accent,
@@ -417,7 +418,7 @@ fun CircuitDetailBottomSheet(
                 next7Days.forEach { (date, segs) ->
                     val serviceWindows = segs.filter { it.state == ScheduledState.SERVICE_SCHEDULED }
                     val summary = if (segs.all { it.state == ScheduledState.UNKNOWN }) {
-                        "Sin pronóstico"
+                        "Sin programación"
                     } else if (serviceWindows.isEmpty()) {
                         "Sin períodos de servicio"
                     } else {

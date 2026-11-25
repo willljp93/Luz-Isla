@@ -142,8 +142,8 @@ class AppUpdateService(
                     latestTag = prefs.latestKnownTag,
                     versionLabel = normalizeVersionLabel(prefs.latestKnownTag),
                     remoteVersionCode = prefs.latestKnownVersionCode,
-                    releaseTitle = prefs.latestKnownTitle.ifBlank { prefs.latestKnownTag },
-                    releaseNotes = prefs.latestKnownNotes,
+                    releaseTitle = formatReleaseNotesForDisplay(prefs.latestKnownTitle).ifBlank { prefs.latestKnownTag },
+                    releaseNotes = formatReleaseNotesForDisplay(prefs.latestKnownNotes),
                     publishedAt = prefs.latestKnownPublishedAt,
                     releasePageUrl = prefs.latestKnownReleasePageUrl.ifBlank { GITHUB_RELEASES_URL },
                     preferredApkUrl = prefs.latestKnownDownloadUrl.ifBlank {
@@ -180,8 +180,8 @@ class AppUpdateService(
             val preferredApk = pickPreferredApkAsset(release.assets, supportedAbis)
             val releasePage = release.htmlUrl.ifBlank { GITHUB_RELEASES_URL }
             val downloadUrl = preferredApk?.browserDownloadUrl?.ifBlank { releasePage } ?: releasePage
-            val title = release.name?.trim().orEmpty().ifBlank { release.tagName }
-            val notes = release.body?.trim().orEmpty()
+            val title = formatReleaseNotesForDisplay(release.name.orEmpty()).ifBlank { release.tagName }
+            val notes = formatReleaseNotesForDisplay(release.body.orEmpty())
             val published = release.publishedAt?.trim().orEmpty()
             val isNewer = isRemoteVersionNewer(
                 remoteTag = release.tagName,
@@ -292,13 +292,6 @@ class AppUpdateService(
                 status = UpdateChannelStatus.ACTIVE
             ),
             DistributionChannel(
-                id = "play_store",
-                name = "Google Play Store",
-                subtitle = "Tienda oficial con actualización automática",
-                url = null,
-                status = UpdateChannelStatus.COMING_SOON
-            ),
-            DistributionChannel(
                 id = "apklis",
                 name = "Apklis",
                 subtitle = "Centro de aplicaciones Android en Cuba",
@@ -325,6 +318,35 @@ class AppUpdateService(
             val trimmed = tagOrVersion.trim()
             if (trimmed.isEmpty()) return ""
             return if (trimmed.startsWith("v", ignoreCase = true)) trimmed else "v$trimmed"
+        }
+
+        fun formatReleaseNotesForDisplay(raw: String): String {
+            if (raw.isBlank()) return ""
+            var text = raw.replace("\r\n", "\n").replace('\r', '\n')
+            text = text.replace(Regex("""```[a-zA-Z0-9_-]*"""), "")
+            text = text.replace(Regex("""!\[([^\]\n]*)\]\(([^)\n]+)\)"""), "$1")
+            text = text.replace(Regex("""\[([^\]\n]+)\]\(([^)\n]+)\)"""), "$1")
+            text = text.replace("`", "")
+            text = text.replace("**", "")
+            text = text.replace("__", "")
+            text = text.replace("~~", "")
+
+            val cleanedLines = text.lines().mapNotNull { line ->
+                val trimmed = line.trim()
+                if (trimmed.matches(Regex("""^[-*_]{3,}$"""))) {
+                    null
+                } else {
+                    var out = trimmed
+                        .replace(Regex("""^#{1,6}\s+"""), "")
+                        .replace(Regex("""^>\s?"""), "")
+                        .replace(Regex("""^[-*+]\s+"""), "• ")
+                    out = out.replace(Regex("""\*([^*\n]+)\*"""), "$1")
+                    out.trimEnd()
+                }
+            }
+            return cleanedLines.joinToString("\n")
+                .replace(Regex("""\n{3,}"""), "\n\n")
+                .trim()
         }
 
         fun parseVersion(

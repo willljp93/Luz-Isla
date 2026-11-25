@@ -134,7 +134,7 @@ class HttpsSyncManager(
                 )
             }
         } catch (e: Exception) {
-            val msg = "Sin conexión o error al validar pronóstico: ${e.message ?: "Error de red"}. Se conservan los datos locales."
+            val msg = "Sin conexión o error al validar configuración: ${e.message ?: "Error de red"}. Se conservan los datos locales."
             prefsRepo.recordSyncStatus(msg)
             SyncOutcome.Failure(msg)
         }
