@@ -31,7 +31,7 @@ import java.time.ZoneId
 import java.util.UUID
 
 enum class CircuitsPrimaryTab(val label: String) {
-    CIRCUIT_EDITOR("Edición de circuitos"),
+    CIRCUIT_EDITOR("Edición"),
     PROGRAMMING("Programación")
 }
 

@@ -54,7 +54,6 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.RuleSource
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.TimelineSegment
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalElectricStatusColors
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -745,7 +744,7 @@ fun TimelineSegmentDetailCard(
                 Text(
                     text = "${ScheduleEngine.formatTime(segment.startMillis, use24h, zoneId)}\u2060–\u2060${ScheduleEngine.formatTime(segment.endMillis, use24h, zoneId)} (${ScheduleEngine.formatDurationHuman(segment.durationMillis)})",
                     style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = JetBrainsMonoFontFamily,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
@@ -802,7 +801,6 @@ fun TimelineIntervalsSummaryList(
                 Text(
                     text = "${ScheduleEngine.formatTime(seg.startMillis, use24h, zoneId)}\u2060–\u2060${ScheduleEngine.formatTime(seg.endMillis, use24h, zoneId)}",
                     style = MaterialTheme.typography.labelLarge,
-                    fontFamily = JetBrainsMonoFontFamily,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
@@ -904,8 +902,8 @@ private fun skyColorAtMinute(
     val noon = (sr + ss) * 0.5f
     val halfTransition = 55f
 
-    val nightDeep = if (isDarkTheme) Color(0xFF312E81) else Color(0xFF1E1B4B)
-    val twilightBlue = if (isDarkTheme) Color(0xFF4F46E5) else Color(0xFF2563EB)
+    val nightDeep = if (isDarkTheme) Color(0xFF4338CA) else Color(0xFF1E1B4B)
+    val twilightBlue = if (isDarkTheme) Color(0xFF6366F1) else Color(0xFF2563EB)
     val skyDay = if (isDarkTheme) Color(0xFF38BDF8) else Color(0xFF0EA5E9)
     val skyNoon = if (isDarkTheme) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
 

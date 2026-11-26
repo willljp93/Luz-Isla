@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.ScheduleEngine
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -86,7 +85,6 @@ fun DateSelectorField(
                 Text(
                     text = date?.let { ScheduleEngine.formatShortDate(it) } ?: placeholder,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = if (date != null) JetBrainsMonoFontFamily else null,
                     fontWeight = if (date != null) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (date != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -166,7 +164,6 @@ fun TimeSelectorField(
                 Text(
                     text = displayText,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

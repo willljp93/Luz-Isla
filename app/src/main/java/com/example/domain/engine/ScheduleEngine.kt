@@ -165,6 +165,19 @@ object ScheduleEngine {
         }
     }
 
+    fun formatReadableZoneTitle(
+        zoneId: ZoneId,
+        atInstant: Instant = Instant.now()
+    ): String {
+        val gmt = formatGmtOffset(zoneId, atInstant)
+        val presetName = presetLabelForZone(zoneId)
+        return when {
+            !presetName.isNullOrBlank() -> "$presetName ($gmt)"
+            isTechnicalOffsetZoneId(zoneId.id) -> "Huso horario $gmt"
+            else -> formatZoneSummary(zoneId, atInstant)
+        }
+    }
+
     fun isSameInstantOffset(
         first: ZoneId,
         second: ZoneId,
@@ -774,6 +787,7 @@ object ScheduleEngine {
     private val time12Formatter = DateTimeFormatter.ofPattern("hh:mm a", esCuLocale)
     private val time24Formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
     private val dateFormatter = DateTimeFormatter.ofPattern("EEE d 'de' MMM, yyyy", esCuLocale)
+    private val heroDateFormatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", esCuLocale)
     private val shortDateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.US)
     private val dateTime12Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy hh:mm a", esCuLocale)
     private val dateTime24Formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.US)
@@ -800,6 +814,11 @@ object ScheduleEngine {
 
     fun formatDateEs(date: LocalDate): String =
         date.format(dateFormatter).replaceFirstChar { it.uppercase() }
+
+    fun formatHeroDateEs(date: LocalDate): String =
+        date.format(heroDateFormatter)
+            .replace(".", "")
+            .replaceFirstChar { it.uppercase() }
 
     fun formatShortDate(date: LocalDate): String = date.format(shortDateFormatter)
 

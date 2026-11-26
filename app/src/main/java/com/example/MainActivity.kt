@@ -311,7 +311,6 @@ private fun LuzIslaApp(
         val bottomOverlayPadding = when {
             useNavRail -> 0.dp
             isBottomBarVisible -> maxOf(with(density) { visibleBarHeightPx.toDp() }, gestureBottomDp)
-            bottomBarBehavior == BottomBarBehavior.PILL_HANDLE -> gestureBottomDp + 44.dp
             else -> gestureBottomDp
         }
 

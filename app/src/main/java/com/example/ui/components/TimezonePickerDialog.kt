@@ -47,7 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.engine.ScheduleEngine
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
@@ -206,7 +205,7 @@ fun TimezonePickerDialog(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = "Dispositivo: ${ScheduleEngine.formatZoneSummary(systemZone, nowInstant)}",
+                                    text = "Dispositivo: ${ScheduleEngine.formatReadableZoneTitle(systemZone, nowInstant)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -272,7 +271,6 @@ fun TimezonePickerDialog(
                                     Text(
                                         text = ScheduleEngine.formatTime(nowMillis, use24h, pendingZone),
                                         style = MaterialTheme.typography.labelLarge,
-                                        fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
                                         maxLines = 1,
@@ -383,7 +381,6 @@ fun TimezonePickerDialog(
                                                 Text(
                                                     text = gmtLabel,
                                                     style = MaterialTheme.typography.labelMedium,
-                                                    fontFamily = JetBrainsMonoFontFamily,
                                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                                     color = if (isSelected) {
                                                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -506,7 +503,6 @@ fun TimezonePickerDialog(
                                         Text(
                                             text = localTime,
                                             style = MaterialTheme.typography.labelMedium,
-                                            fontFamily = JetBrainsMonoFontFamily,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
                                             maxLines = 1,
@@ -515,7 +511,6 @@ fun TimezonePickerDialog(
                                         Text(
                                             text = entry.gmtLabel,
                                             style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             softWrap = false

@@ -179,14 +179,14 @@ fun HomeScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        softWrap = false
                                     )
                                     Text(
-                                        text = ScheduleEngine.formatDateEs(nowZdt.toLocalDate()),
+                                        text = ScheduleEngine.formatHeroDateEs(nowZdt.toLocalDate()),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.88f),
+                                        color = Color.White.copy(alpha = 0.90f),
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -195,7 +195,6 @@ fun HomeScreen(
                                 Text(
                                     text = ScheduleEngine.formatTime(state.nowMillis, state.use24h, state.zoneId),
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontFamily = JetBrainsMonoFontFamily,
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -290,7 +289,6 @@ fun HomeScreen(
                                     Text(
                                         text = ScheduleEngine.formatGmtOffset(state.zoneId),
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.SemiBold,
                                         color = Color.White,
                                         maxLines = 1,
@@ -461,7 +459,6 @@ fun HomeScreen(
                     Text(
                         text = "Luz Isla · v${AppVersionConfig.APP_VERSION_NAME}",
                         style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
                         maxLines = 1,
                         softWrap = false
@@ -512,7 +509,6 @@ private fun SummaryCountPill(
             Text(
                 text = count.toString(),
                 style = MaterialTheme.typography.titleLarge,
-                fontFamily = JetBrainsMonoFontFamily,
                 color = Color.White,
                 fontWeight = FontWeight.Bold
             )

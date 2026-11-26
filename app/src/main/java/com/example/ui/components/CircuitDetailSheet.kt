@@ -284,7 +284,7 @@ fun CircuitDetailBottomSheet(
                                 Text(
                                     ScheduleEngine.formatTime(evaluation.currentIntervalStartMillis, use24h, zoneId),
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontFamily = JetBrainsMonoFontFamily
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
@@ -292,7 +292,7 @@ fun CircuitDetailBottomSheet(
                                 Text(
                                     ScheduleEngine.formatTime(evaluation.currentIntervalEndMillis, use24h, zoneId),
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontFamily = JetBrainsMonoFontFamily
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }

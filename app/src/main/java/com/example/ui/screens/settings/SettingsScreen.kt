@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,11 +47,11 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.sync.SunriseSunsetService
-import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.TimezonePickerDialog
 import com.example.ui.theme.LocalBottomOverlayPadding
 import kotlinx.coroutines.delay
@@ -159,21 +160,40 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
-                        CenteredScrollableChipRow {
-                            SettingsCategoryTab.entries.forEach { tab ->
-                                FilterChip(
-                                    selected = selectedTab == tab,
-                                    onClick = { selectedTab = tab },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = tab.icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            SettingsCategoryTab.entries.chunked(2).forEach { rowTabs ->
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    rowTabs.forEach { tab ->
+                                        FilterChip(
+                                            selected = selectedTab == tab,
+                                            onClick = { selectedTab = tab },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = tab.icon,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = tab.label,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("settings_tab_${tab.name.lowercase()}")
                                         )
-                                    },
-                                    label = { Text(tab.label, maxLines = 1, softWrap = false) },
-                                    modifier = Modifier.testTag("settings_tab_${tab.name.lowercase()}")
-                                )
+                                    }
+                                }
                             }
                         }
                     }

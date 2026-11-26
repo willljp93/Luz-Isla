@@ -332,6 +332,24 @@ class ScheduleEngineTest {
         assertEquals(ScheduledState.OUTAGE_SCHEDULED, at0930.state)
         assertEquals(RuleSource.MANUAL_EXCEPTION, at0930.ruleSource)
     }
+
+    @Test
+    fun `formatHeroDateEs stays compact without ellipsis and formatReadableZoneTitle avoids Etc GMT`() {
+        val date = LocalDate.of(2026, 11, 26)
+        val heroDate = ScheduleEngine.formatHeroDateEs(date)
+        assertTrue(heroDate.contains("26"))
+        assertTrue(heroDate.contains("2026"))
+        assertFalse(heroDate.contains(" de "))
+
+        val winterInstant = java.time.Instant.parse("2026-01-15T12:00:00Z")
+        val readableEtc = ScheduleEngine.formatReadableZoneTitle(java.time.ZoneId.of("Etc/GMT+4"), winterInstant)
+        assertFalse(readableEtc.contains("Etc/"))
+        assertTrue(readableEtc.contains("GMT-4"))
+
+        val readableHavana = ScheduleEngine.formatReadableZoneTitle(ScheduleEngine.HAVANA_ZONE, winterInstant)
+        assertTrue(readableHavana.contains("La Habana"))
+        assertTrue(readableHavana.contains("GMT-5"))
+    }
 }
 
 

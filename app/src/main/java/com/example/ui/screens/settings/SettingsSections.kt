@@ -46,21 +46,29 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WbTwilight
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,9 +81,7 @@ import com.example.domain.version.AppVersionConfig
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.UpdateChannelStatus
-import com.example.ui.components.CenteredScrollableChipRow
 import com.example.ui.components.IslaEmblemBadge
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.Instant
 import java.time.ZoneId
 
@@ -105,7 +111,6 @@ fun ActiveConfigStatusCard(
                     Text(
                         text = "Luz Isla v${AppVersionConfig.APP_VERSION_NAME}",
                         style = MaterialTheme.typography.titleSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
@@ -122,7 +127,6 @@ fun ActiveConfigStatusCard(
                 Text(
                     text = "v${prefs.activeConfigVersionName}",
                     style = MaterialTheme.typography.labelSmall,
-                    fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -145,6 +149,7 @@ fun ActiveConfigStatusCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimezoneAndFormatSection(
     prefs: UserPreferences,
@@ -156,13 +161,16 @@ fun TimezoneAndFormatSection(
 ) {
     val nowInstant = Instant.ofEpochMilli(currentNowMillis)
     val systemZone = ZoneId.systemDefault()
-    val detectedLabel = ScheduleEngine.formatZoneSummary(systemZone, nowInstant)
-    val activeZoneSummary = ScheduleEngine.formatZoneSummary(activeZone, nowInstant)
-    val activePresetName = ScheduleEngine.presetLabelForZone(activeZone)
+    val detectedLabel = ScheduleEngine.formatReadableZoneTitle(systemZone, nowInstant)
+    val activeZoneSummary = ScheduleEngine.formatReadableZoneTitle(activeZone, nowInstant)
 
     SettingsSectionCard(title = "Zona horaria y formato de hora") {
         Text("Origen de zona horaria", style = MaterialTheme.typography.labelLarge)
-        CenteredScrollableChipRow {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilterChip(
                 selected = prefs.useSystemTimezone,
                 onClick = { onSetTimezonePreference(true, prefs.manualTimezoneId) },
@@ -209,19 +217,11 @@ fun TimezoneAndFormatSection(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Hora actual en zona activa: ${ScheduleEngine.formatTime(currentNowMillis, prefs.use24HourFormat, activeZone)} ($activeZoneSummary)",
+                    text = "Hora actual: ${ScheduleEngine.formatTime(currentNowMillis, prefs.use24HourFormat, activeZone)} ($activeZoneSummary)",
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (!activePresetName.isNullOrBlank()) {
-                    Text(
-                        text = "Región: $activePresetName",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
                 Text(
                     text = "Dispositivo detectado: $detectedLabel",
                     style = MaterialTheme.typography.labelSmall,
@@ -250,7 +250,11 @@ fun TimezoneAndFormatSection(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
         Text("Formato de hora", style = MaterialTheme.typography.labelLarge)
-        CenteredScrollableChipRow {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             FilterChip(
                 selected = !prefs.use24HourFormat,
                 onClick = { onSetUse24HourFormat(false) },
@@ -333,7 +337,12 @@ fun AppearanceSection(
 
         SettingsSectionCard(title = "Tema, animaciones y barra") {
             Text("Tema visual", style = MaterialTheme.typography.labelLarge)
-            CenteredScrollableChipRow {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 listOf(
                     Triple(ThemeMode.SYSTEM, "Sistema", Icons.Filled.BrightnessAuto),
                     Triple(ThemeMode.LIGHT, "Claro", Icons.Filled.LightMode),
@@ -367,7 +376,12 @@ fun AppearanceSection(
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
             Text("Comportamiento del menú inferior", style = MaterialTheme.typography.labelLarge)
-            CenteredScrollableChipRow {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 BottomBarBehavior.entries.forEach { behavior ->
                     val behaviorIcon = when (behavior) {
                         BottomBarBehavior.AUTO -> Icons.Filled.SwapVert
@@ -393,7 +407,12 @@ fun AppearanceSection(
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
             Text("Tarjetas de widgets", style = MaterialTheme.typography.labelLarge)
-            CenteredScrollableChipRow {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 WidgetCardStyle.entries.forEach { style ->
                     val styleIcon = when (style) {
                         WidgetCardStyle.SYSTEM -> Icons.Filled.AutoAwesome
@@ -467,7 +486,6 @@ fun AppearanceSection(
                     Text(
                         text = "Día / Noche: ${ScheduleEngine.formatMinuteOfDay(p.sunriseMinutes, p.use24HourFormat)}\u2060–\u2060${ScheduleEngine.formatMinuteOfDay(p.sunsetMinutes, p.use24HourFormat)}",
                         style = MaterialTheme.typography.titleSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold
                     )
 
@@ -722,24 +740,63 @@ fun DataAndSyncSection(
                 onCheckedChange = onAutoSyncChange
             )
 
-            val intervalOptions = listOf(
-                Triple(0, "Al abrir la app", Icons.Filled.Sync),
-                Triple(1, "Cada 1h", Icons.Filled.Schedule),
-                Triple(24, "Cada 24h", Icons.Filled.Update)
-            )
-            CenteredScrollableChipRow {
-                intervalOptions.forEach { (hrs, label, icon) ->
-                    FilterChip(
-                        selected = syncIntervalHours == hrs,
-                        onClick = { onSyncIntervalChange(hrs) },
+            @OptIn(ExperimentalMaterial3Api::class)
+            run {
+                val intervalOptions = listOf(
+                    Triple(0, "Al abrir la app", Icons.Filled.Sync),
+                    Triple(1, "Cada 1h", Icons.Filled.Schedule),
+                    Triple(24, "Cada 24h", Icons.Filled.Update)
+                )
+                val selectedOption = intervalOptions.firstOrNull { it.first == syncIntervalHours } ?: intervalOptions.first()
+                var intervalExpanded by remember { mutableStateOf(false) }
+
+                ExposedDropdownMenuBox(
+                    expanded = intervalExpanded,
+                    onExpandedChange = { intervalExpanded = !intervalExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedOption.second,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text("Frecuencia de sincronización") },
                         leadingIcon = {
-                            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                imageVector = selectedOption.third,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
                         },
-                        label = { Text(label, maxLines = 1, softWrap = false) },
-                        modifier = Modifier.testTag(
-                            if (hrs == 0) "sync_interval_app_open" else "sync_interval_${hrs}h"
-                        )
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = intervalExpanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                            .testTag("sync_interval_dropdown")
                     )
+                    ExposedDropdownMenu(
+                        expanded = intervalExpanded,
+                        onDismissRequest = { intervalExpanded = false }
+                    ) {
+                        intervalOptions.forEach { (hrs, label, icon) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = {
+                                    Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                },
+                                onClick = {
+                                    onSyncIntervalChange(hrs)
+                                    intervalExpanded = false
+                                },
+                                modifier = Modifier.testTag(
+                                    if (hrs == 0) "sync_interval_app_open" else "sync_interval_${hrs}h"
+                                )
+                            )
+                        }
+                    }
                 }
             }
 
@@ -937,17 +994,65 @@ fun NotificationsAndAppSection(
                 ensurePermAndSave(favOnly = it)
             }
 
-            Text("Anticipación del aviso", style = MaterialTheme.typography.labelLarge)
-            CenteredScrollableChipRow(spacing = 6.dp) {
-                listOf(5, 10, 15, 30).forEach { mins ->
-                    FilterChip(
-                        selected = p.notifyLeadMinutes == mins,
-                        onClick = { ensurePermAndSave(lead = mins) },
+            @OptIn(ExperimentalMaterial3Api::class)
+            run {
+                val leadOptions = listOf(
+                    0 to "Sin antelación",
+                    5 to "5 min",
+                    10 to "10 min",
+                    15 to "15 min",
+                    30 to "30 min",
+                    60 to "1 hora"
+                )
+                val selectedLeadLabel = leadOptions.firstOrNull { it.first == p.notifyLeadMinutes }?.second
+                    ?: when (p.notifyLeadMinutes) {
+                        0 -> "Sin antelación"
+                        60 -> "1 hora"
+                        else -> "${p.notifyLeadMinutes} min"
+                    }
+                var leadExpanded by remember { mutableStateOf(false) }
+
+                ExposedDropdownMenuBox(
+                    expanded = leadExpanded,
+                    onExpandedChange = { leadExpanded = !leadExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedLeadLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text("Anticipación del aviso") },
                         leadingIcon = {
-                            Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
                         },
-                        label = { Text("$mins min", maxLines = 1, softWrap = false) }
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = leadExpanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                            .testTag("settings_notify_lead_dropdown")
                     )
+                    ExposedDropdownMenu(
+                        expanded = leadExpanded,
+                        onDismissRequest = { leadExpanded = false }
+                    ) {
+                        leadOptions.forEach { (mins, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                                },
+                                onClick = {
+                                    ensurePermAndSave(lead = mins)
+                                    leadExpanded = false
+                                },
+                                modifier = Modifier.testTag("settings_notify_lead_$mins")
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -960,7 +1065,6 @@ fun NotificationsAndAppSection(
                 Text(
                     text = "Versión instalada: v${AppVersionConfig.APP_VERSION_NAME}",
                     style = MaterialTheme.typography.titleSmall,
-                    fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     softWrap = true
                 )
@@ -1057,7 +1161,6 @@ fun NotificationsAndAppSection(
                             Text(
                                 text = "Archivo recomendado: ${p.latestKnownApkName}",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -1202,7 +1305,6 @@ fun NotificationsAndAppSection(
                     Text(
                         text = "Versión v${AppVersionConfig.APP_VERSION_NAME} (Compilación ${AppVersionConfig.APP_VERSION_CODE}) • Config. v${p.activeConfigVersionName}",
                         style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
@@ -1218,15 +1320,14 @@ fun NotificationsAndAppSection(
 
 @Composable
 private fun UnifiedStatusRow(title: String, status: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Column(
+        verticalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.weight(1.05f)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
                 Icons.Filled.CheckCircle,
@@ -1238,20 +1339,15 @@ private fun UnifiedStatusRow(title: String, status: String) {
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                softWrap = true,
-                overflow = TextOverflow.Ellipsis
+                softWrap = true
             )
         }
         Text(
             text = status,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.End,
-            maxLines = 2,
             softWrap = true,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(0.95f)
+            modifier = Modifier.padding(start = 20.dp)
         )
     }
 }

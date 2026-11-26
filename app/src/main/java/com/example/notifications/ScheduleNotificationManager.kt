@@ -87,7 +87,13 @@ object ScheduleNotificationManager {
         val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
         val use24h = prefs.use24HourFormat
         val nowMillis = System.currentTimeMillis()
-        val leadMillis = prefs.notifyLeadMinutes.coerceIn(5, 30) * 60_000L
+        val leadMinutes = prefs.notifyLeadMinutes.coerceIn(0, 60)
+        val leadMillis = leadMinutes * 60_000L
+        val leadPhrase = when (leadMinutes) {
+            0 -> "ahora"
+            60 -> "en 1 hora"
+            else -> "en $leadMinutes min"
+        }
         val horizonMillis = nowMillis + 24 * 60 * 60_000L
         val today = LocalDate.now(zoneId)
 
@@ -124,7 +130,7 @@ object ScheduleNotificationManager {
                             alarms += PlannedAlarm(
                                 triggerAtMillis = triggerAt,
                                 circuitCode = circuit.code,
-                                title = "${circuit.displayTitle()}: $verb en ${prefs.notifyLeadMinutes} min",
+                                title = "${circuit.displayTitle()}: $verb $leadPhrase",
                                 body = "Servicio programado a partir de las $timeStr (hasta ${ScheduleEngine.formatTime(curr.endMillis, use24h, zoneId)})."
                             )
                         }
@@ -134,7 +140,7 @@ object ScheduleNotificationManager {
                             alarms += PlannedAlarm(
                                 triggerAtMillis = triggerAt,
                                 circuitCode = circuit.code,
-                                title = "${circuit.displayTitle()}: Fin de servicio en ${prefs.notifyLeadMinutes} min",
+                                title = "${circuit.displayTitle()}: Fin de servicio $leadPhrase",
                                 body = "Interrupción programada a partir de las $timeStr."
                             )
                         }

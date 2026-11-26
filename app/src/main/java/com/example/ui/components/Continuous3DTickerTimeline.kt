@@ -59,7 +59,6 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
 import com.example.domain.model.TimelineSegment
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -268,7 +267,6 @@ fun Continuous3DTickerTimeline(
                     Text(
                         text = pillLabel,
                         style = MaterialTheme.typography.labelLarge,
-                        fontFamily = JetBrainsMonoFontFamily,
                         color = Color(0xFFEAFBF4),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp)

@@ -64,7 +64,6 @@ import com.example.domain.model.ThemeMode
 import com.example.domain.version.AppVersionConfig
 import com.example.ui.components.IslaEmblemBadge
 import com.example.ui.components.TimezonePickerDialog
-import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.ZoneId
 
 @Composable
@@ -232,11 +231,11 @@ fun OnboardingScreen(
                                 ScheduleEngine.parseManualZoneId(manualTz)
                             }
                             val manualSummary = remember(manualZoneObj) {
-                                ScheduleEngine.formatZoneSummary(manualZoneObj)
+                                ScheduleEngine.formatReadableZoneTitle(manualZoneObj)
                             }
                             ThemeChoiceCard(
                                 title = "Automática ($sysOffsetLabel)",
-                                subtitle = "${ScheduleEngine.formatZoneSummary(sysZone)} • Hora: ${ScheduleEngine.formatTime(nowMillis, use24h, sysZone)}",
+                                subtitle = "${ScheduleEngine.formatReadableZoneTitle(sysZone)} • Hora: ${ScheduleEngine.formatTime(nowMillis, use24h, sysZone)}",
                                 icon = Icons.Filled.Public,
                                 selected = useSystemTz,
                                 onClick = { useSystemTz = true }
@@ -313,7 +312,6 @@ fun OnboardingScreen(
                                     Text(
                                         text = "${ScheduleEngine.formatMinuteOfDay(9 * 60, use24h)} – ${ScheduleEngine.formatMinuteOfDay(17 * 60, use24h)}",
                                         style = MaterialTheme.typography.titleMedium,
-                                        fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )

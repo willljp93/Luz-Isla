@@ -95,7 +95,7 @@ val LuzIslaTypography = Typography(
         lineHeight = 16.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
+        fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 14.sp
