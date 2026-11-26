@@ -26,7 +26,24 @@ Plantilla para futuras versiones (copia este bloque debajo de [Unreleased] al pu
 
 ### Preparado para próximas versiones
 - Plantilla de notas limpia compatible con GitHub Releases y el lector de actualizaciones dentro de la app.
-- Estandarización universal de la carpeta y archivo de configuración comunitaria en `ConfCircuitos/luz_isla_config.json` (sin fecha fija en el nombre del archivo) y migración automática desde rutas previas.
+
+---
+
+## [2026.11.26.1] - 2026-11-26 (`Build 26112601`)
+
+### Agregado
+- Incremento automático de fecha y número de compilación diaria en GitHub Actions (`.github/workflows/android-ci.yml`) cuando se publican nuevos commits en `main`/`master` sin modificar manualmente `version.properties`, con extracción automática de notas desde `CHANGELOG.md` o historial de commits.
+- Menús desplegables Material 3 (`ExposedDropdownMenuBox`) en Ajustes para elegir la antelación de avisos (`Sin antelación`, `5 min`, `10 min`, `15 min`, `30 min`, `1 hora`) y la frecuencia de sincronización HTTPS (`Al abrir la app`, `Cada 1h`, `Cada 24h`).
+- Limpieza automática de activos obsoletos en Releases y envío directo de `overrideVersionName` / `overrideVersionCode` a Gradle para garantizar coincidencia total entre el APK, su nombre de archivo, la etiqueta y el texto de la ficha en GitHub.
+
+### Cambiado
+- **Sincronización única de versión**: `app/build.gradle.kts` ahora lee directamente `version.properties` como fuente de verdad (y acepta sobrescritura desde CI), manteniendo alineados `BuildConfig.VERSION_NAME`, `BuildConfig.VERSION_CODE`, `AppUpdateService` y los APK compilados.
+- **Refactorización visual y ergonómica**: pestañas de **Ajustes** en cuadrícula simétrica `2×2` sin scroll horizontal, filas envolventes (`FlowRow`) para chips de selección sin recortes en bordes, formato compacto de fecha en Inicio (`Jue, 26 nov`) y nombre de pestaña **Edición** más limpio en **Circuitos**.
+- **Jerarquía tipográfica y legibilidad**: tipografía monoespaciada reservada estrictamente para conteos regresivos en vivo (`HH:MM:SS`) y tipografía sans-serif limpia en etiquetas y textos; mayor contraste en bordes nocturnos de la línea de tiempo 24 h.
+
+### Corregido
+- Corregido el desfase de compilaciones en GitHub Actions donde nuevos commits reutilizaban el mismo tag, título, ficha de texto y nombres de APK de la versión anterior junto con archivos residuales.
+- Eliminada la franja vacía inferior residual al colapsar la barra de navegación en modo *Píldora plegable*, así como el recorte de estado y textos en filas de *Comprobación unificada*.
 
 ---
 

@@ -42,7 +42,7 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
   - Sincronización HTTPS directa desde GitHub (`ConfCircuitos/luz_isla_config.json` por defecto) con respaldo local previo y preservación de favoritos, vivienda principal, nombres y comentarios propios.
   - Exportación e importación offline en **JSON** o códigos alfanuméricos compactos **`LUZ1-`** (Deflate + Base32 Crockford + SHA-256).
   - Comprobación unificada al abrir la app (JSON remoto, ciclo solar y nueva versión en GitHub Releases).
-- **Notificaciones locales, Widgets e Ícono dinámico**: avisos configurables (5, 10, 15 o 30 min), barra inferior automática o píldora plegable translúcida, widgets de escritorio e ícono dinámico vinculado a *Mi vivienda*.
+- **Notificaciones locales, Widgets e Ícono dinámico**: avisos configurables (Sin antelación, 5, 10, 15, 30 min o 1 hora), barra inferior automática o píldora plegable translúcida, widgets de escritorio e ícono dinámico vinculado a *Mi vivienda*.
 
 ---
 

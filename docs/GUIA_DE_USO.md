@@ -83,7 +83,7 @@ La pestaña **Calendario** permite planificar por fecha o por circuito:
 
 La pestaña **Circuitos** mantiene fija su barra superior al hacer scroll y se divide en dos áreas:
 
-### A. Edición de circuitos
+### A. Edición (circuitos)
 - Crea circuitos nuevos o edita existentes: código oficial, nombre personalizado, comentario/localidad, estado activo, favorito y **Mi vivienda** (circuito principal).
 - Filtra rápidamente con los chips centrados (*Todos*, grupos existentes y *Fijos*).
 - Asigna la modalidad de programación:
@@ -115,6 +115,7 @@ Contiene 5 subsecciones:
 
 ## 6. Ajustes, Sincronización y Respaldos
 
+- **Categorías de Ajustes (`Estado y Hora`, `Apariencia`, `Datos y Sync`, `Avisos y App`)**: organizadas en cuadrícula `2×2` sin desplazamiento horizontal recortado.
 - **Estado de la aplicación y configuración**: muestra versión instalada, compilación y versión de datos activos.
 - **Zona horaria y formato de hora**: automático o selección manual (GMT / ciudades) y modo 12h AM/PM o 24h.
 - **Línea de tiempo**: activa o desactiva *Centrar línea de tiempo en la hora actual* (ventana móvil ±12h en Hoy).
@@ -124,11 +125,12 @@ Contiene 5 subsecciones:
 - **Sincronización por URL (HTTPS)**:
   - URL predeterminada: `https://raw.githubusercontent.com/willljp93/Luz-Isla/main/ConfCircuitos/luz_isla_config.json`.
   - Acepta también enlaces `github.com/.../blob/...` (los convierte automáticamente a `raw` y codifica espacios).
+  - Selector desplegable de frecuencia (*Al abrir la app*, *Cada 1h*, *Cada 24h*).
   - Crea un respaldo local automático antes de aplicar cambios y **conserva siempre** tus favoritos, *Mi vivienda*, nombres personalizados y comentarios.
 - **Exportar e Importar (JSON y Código)**:
   - Exporta archivos `.json` con versionado automático diario (`YYYY.MM.DD.N`) o códigos compactos `LUZ1-...` listos para copiar/compartir por WhatsApp o Telegram.
   - Incluye botón **Restaurar respaldo anterior** para revertir la última importación/sincronización.
-- **Notificaciones locales**: alertas antes del inicio del servicio, fin del servicio o próximo restablecimiento (5, 10, 15 o 30 min antes, solo favoritos o todos).
+- **Notificaciones locales**: menú desplegable de antelación (*Sin antelación*, *5 min*, *10 min*, *15 min*, *30 min* o *1 hora*), filtro para solo favoritos o todos, y avisos antes del inicio, fin o próximo restablecimiento.
 - **Actualizaciones y descargas**: verifica nuevas versiones en **GitHub Releases**, muestra las notas limpias de la versión disponible y abre el APK correspondiente a la arquitectura del dispositivo.
 
 ---

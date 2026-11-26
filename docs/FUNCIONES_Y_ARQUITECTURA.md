@@ -182,18 +182,17 @@ La carpeta pública [`ConfCircuitos/`](../ConfCircuitos/) contiene la configurac
 
 ### Versionado único (`version.properties`)
 `version.properties` centraliza el versionado diario `YYYY.MM.DD.N`:
-- `versionName`: `2026.11.25.2`
-- `versionCode`: `26112502` (`YY * 1_000_000 + MM * 10_000 + DD * 100 + N`)
+- Ejemplo actual base: `versionName = 2026.11.26.1` y `versionCode = 26112601` (`(YY * 1_000_000) + (MM * 10_000) + (DD * 100) + N`).
 
-Tanto Gradle (`app/build.gradle.kts`) como GitHub Actions (`.github/workflows/android-ci.yml`) leen estas propiedades para mantener sincronizados los builds locales, las etiquetas de Release y las comparaciones de actualización de `AppUpdateService`.
+Tanto Gradle (`app/build.gradle.kts`, que admite `-PoverrideVersionName` y `-PoverrideVersionCode`) como GitHub Actions (`.github/workflows/android-ci.yml`) comparten esta misma fuente para mantener sincronizados `BuildConfig`, los nombres de APK, las etiquetas de Release, la ficha de texto en GitHub y las comparaciones de actualización de `AppUpdateService`.
 
 ### Flujo de GitHub Actions
-En cada `push`, `pull_request`, etiqueta `v*` o ejecución manual:
-1. Lee `versionName`, `versionCode` y calcula `release_tag`.
+En cada `push` a `main`/`master`, etiqueta `v*` o ejecución manual:
+1. Lee `version.properties`, compara la fecha actual (`America/Havana`) y los tags/releases remotos existentes: si hay un nuevo commit cuyo tag candidato ya fue publicado en otra revisión o pertenece a un día anterior, incrementa automáticamente el día/build (`N + 1`) para no sobrescribir versiones previas.
 2. Aplica `vars.CUSTOM_APP_ID` (si está definido, p. ej. `com.threeare.luzisla`) validando la sintaxis Android.
-3. Ejecuta toda la suite `gradle :app:testDebugUnitTest`.
-4. Si existen `secrets.KEYSTORE_BASE64`, `secrets.STORE_PASSWORD` y `secrets.KEY_PASSWORD`, decodifica la llave `.jks` temporalmente y compila los APK en modo **`release`** con división por ABI (`arm64-v8a`, `armeabi-v7a`, `universal`); en caso contrario compila en `debug`.
-5. Publica los instaladores limpios (`LuzIsla-v<version>-<abi>.apk`) y sus checksums (`LuzIsla-v<version>-sha256.txt`) en **GitHub Releases**.
+3. Ejecuta `gradle :app:testDebugUnitTest` con la versión resuelta.
+4. Si existen `secrets.KEYSTORE_BASE64`, `secrets.STORE_PASSWORD` y `secrets.KEY_PASSWORD`, decodifica la llave `.jks` temporalmente y compila los APK en modo **`release`** con división por ABI (`arm64-v8a`, `armeabi-v7a`, `universal`) inyectando la misma versión en el manifiesto y `BuildConfig`; en caso contrario compila en `debug`.
+5. Genera las notas de la ficha a partir de `CHANGELOG.md` (o de los commits recientes), limpia activos obsoletos si existieran y publica los instaladores limpios (`LuzIsla-v<version>-<abi>.apk`) y sus checksums (`LuzIsla-v<version>-sha256.txt`) apuntando al commit actual en **GitHub Releases**.
 
 ---
 

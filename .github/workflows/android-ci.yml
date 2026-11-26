@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -36,33 +38,130 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           fi
 
-      - name: Extract App Version from version.properties / Gradle
+      - name: Resolve App Version & Release Tag
         id: app_version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f version.properties ]; then
-            V_YEAR=$(sed -n 's/^APP_VERSION_YEAR=//p' version.properties | tr -d '[:space:]')
-            V_MONTH=$(sed -n 's/^APP_VERSION_MONTH=//p' version.properties | tr -d '[:space:]')
-            V_DAY=$(sed -n 's/^APP_VERSION_DAY=//p' version.properties | tr -d '[:space:]')
-            V_BUILD=$(sed -n 's/^APP_VERSION_BUILD=//p' version.properties | tr -d '[:space:]')
-            VERSION_NAME=$(printf "%d.%02d.%02d.%d" "$V_YEAR" "$((10#$V_MONTH))" "$((10#$V_DAY))" "$((10#$V_BUILD))")
-            VERSION_CODE=$(( (V_YEAR % 100) * 1000000 + (10#$V_MONTH) * 10000 + (10#$V_DAY) * 100 + (10#$V_BUILD) ))
-          else
-            VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)
-            VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)
-          fi
-          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
-            echo "Could not extract versionName or versionCode"
-            exit 1
-          fi
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            RELEASE_TAG="${{ github.ref_name }}"
-          else
-            RELEASE_TAG="v${VERSION_NAME}-b${VERSION_CODE}"
-          fi
-          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
-          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Detected versionName=${VERSION_NAME}, versionCode=${VERSION_CODE}, release_tag=${RELEASE_TAG}"
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from datetime import datetime, timedelta, timezone
+          from zoneinfo import ZoneInfo
+
+          def run_cmd(cmd):
+              return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+          def read_version_properties():
+              props = {}
+              if os.path.exists("version.properties"):
+                  with open("version.properties", "r", encoding="utf-8") as f:
+                      for line in f:
+                          line = line.strip()
+                          if not line or line.startswith("#") or "=" not in line:
+                              continue
+                          k, v = line.split("=", 1)
+                          props[k.strip()] = v.strip()
+              y = int(props.get("APP_VERSION_YEAR", "2026"))
+              m = int(props.get("APP_VERSION_MONTH", "11"))
+              d = int(props.get("APP_VERSION_DAY", "26"))
+              b = int(props.get("APP_VERSION_BUILD", "1"))
+              return y, m, d, max(1, min(99, b))
+
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          ref_type = os.environ.get("GITHUB_REF_TYPE", "")
+          ref_name = os.environ.get("GITHUB_REF_NAME", "")
+          head_sha = os.environ.get("GITHUB_SHA", "").strip()
+
+          v_year, v_month, v_day, v_build = read_version_properties()
+          release_tag = f"v{v_year}.{v_month:02d}.{v_day:02d}.{v_build}-b{((v_year % 100) * 1000000) + (v_month * 10000) + (v_day * 100) + v_build}"
+          prev_tag = ""
+
+          if ref_type == "tag" and ref_name:
+              m = re.match(r"^v?(\d{4})\.(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?:-b(\d+))?", ref_name)
+              if m:
+                  v_year, v_month, v_day, v_build = map(int, m.groups()[:4])
+              release_tag = ref_name
+          elif event_name != "pull_request":
+              try:
+                  tz = ZoneInfo("America/Havana")
+              except Exception:
+                  tz = timezone(timedelta(hours=-5))
+              today = datetime.now(tz).date()
+              if (today.year, today.month, today.day) > (v_year, v_month, v_day):
+                  v_year, v_month, v_day = today.year, today.month, today.day
+                  v_build = 1
+
+              # Collect remote tags -> commit SHA
+              tag_to_sha = {}
+              ls_remote = run_cmd(["git", "ls-remote", "--tags", "origin"])
+              if ls_remote.returncode == 0:
+                  for row in ls_remote.stdout.splitlines():
+                      if "\trefs/tags/" not in row:
+                          continue
+                      sha, ref = row.split("\t", 1)
+                      tag = ref.replace("refs/tags/", "")
+                      if tag.endswith("^{}"):
+                          tag_to_sha[tag[:-3]] = sha
+                      else:
+                          tag_to_sha.setdefault(tag, sha)
+
+              # Also inspect GitHub Releases in case a release tag differs or isn't cached
+              release_tags = []
+              gh_rel = run_cmd(["gh", "release", "list", "--limit", "50", "--json", "tagName"])
+              if gh_rel.returncode == 0 and gh_rel.stdout.strip():
+                  try:
+                      for item in json.loads(gh_rel.stdout):
+                          t = (item.get("tagName") or "").strip()
+                          if t:
+                              release_tags.append(t)
+                  except Exception:
+                      pass
+
+              all_known_tags = set(tag_to_sha.keys()) | set(release_tags)
+              vcode = ((v_year % 100) * 1000000) + (v_month * 10000) + (v_day * 100) + v_build
+              vname = f"{v_year}.{v_month:02d}.{v_day:02d}.{v_build}"
+              candidate_tag = f"v{vname}-b{vcode}"
+
+              # Same-commit re-run keeps the existing tag; any new commit gets a clean incremented build
+              existing_sha = tag_to_sha.get(candidate_tag, "")
+              if candidate_tag in all_known_tags and existing_sha != head_sha:
+                  day_prefix = re.compile(rf"^v?{v_year}\.{v_month:02d}\.{v_day:02d}\.(\d+)(?:-|$)")
+                  max_build = v_build
+                  for t in all_known_tags:
+                      mt = day_prefix.match(t)
+                      if mt:
+                          max_build = max(max_build, int(mt.group(1)))
+                  v_build = max_build + 1
+                  if v_build > 99:
+                      raise SystemExit(f"Exceeded max 99 daily builds for {v_year}.{v_month:02d}.{v_day:02d}")
+
+              vcode = ((v_year % 100) * 1000000) + (v_month * 10000) + (v_day * 100) + v_build
+              vname = f"{v_year}.{v_month:02d}.{v_day:02d}.{v_build}"
+              release_tag = f"v{vname}-b{vcode}"
+
+              for rt in release_tags:
+                  if rt != release_tag:
+                      prev_tag = rt
+                      break
+              if not prev_tag and head_sha:
+                  desc = run_cmd(["git", "describe", "--tags", "--abbrev=0", f"--exclude={release_tag}", f"{head_sha}^"])
+                  if desc.returncode == 0:
+                      prev_tag = desc.stdout.strip()
+
+          version_code = ((v_year % 100) * 1000000) + (v_month * 10000) + (v_day * 100) + v_build
+          version_name = f"{v_year}.{v_month:02d}.{v_day:02d}.{v_build}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version_name={version_name}\n")
+              out.write(f"version_code={version_code}\n")
+              out.write(f"release_tag={release_tag}\n")
+              out.write(f"prev_tag={prev_tag}\n")
+
+          print(f"Resolved versionName={version_name}, versionCode={version_code}, release_tag={release_tag}, prev_tag={prev_tag}")
+          PY
 
       - name: Ensure Debug Keystore for CI
         run: |
@@ -102,7 +201,10 @@ jobs:
           fi
 
       - name: Run Unit & Robolectric Tests
-        run: gradle :app:testDebugUnitTest
+        run: |
+          gradle :app:testDebugUnitTest \
+            -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
+            -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
 
       - name: Assemble APKs (Release if signing secrets exist, otherwise Debug)
         id: build_apk
@@ -114,11 +216,15 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
             export KEYSTORE_PATH="$PWD/my-upload-key.jks"
-            gradle :app:assembleRelease -PenableAbiSplits=true
+            gradle :app:assembleRelease -PenableAbiSplits=true \
+              -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
+              -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
             echo "build_variant=release" >> "$GITHUB_OUTPUT"
             echo "apk_dir=app/build/outputs/apk/release" >> "$GITHUB_OUTPUT"
           else
-            gradle :app:assembleDebug -PenableAbiSplits=true
+            gradle :app:assembleDebug -PenableAbiSplits=true \
+              -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
+              -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
             echo "build_variant=debug" >> "$GITHUB_OUTPUT"
             echo "apk_dir=app/build/outputs/apk/debug" >> "$GITHUB_OUTPUT"
           fi
@@ -126,6 +232,7 @@ jobs:
       - name: Stage Versioned Release APKs
         id: stage_apks
         run: |
+          rm -rf release-apks
           mkdir -p release-apks
           VNAME="${{ steps.app_version.outputs.version_name }}"
           APK_DIR="${{ steps.build_apk.outputs.apk_dir }}"
@@ -152,22 +259,103 @@ jobs:
           name: luz-isla-v${{ steps.app_version.outputs.version_name }}
           path: release-apks/*.apk
 
+      - name: Prepare Release Notes & Clean Stale Release Assets
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VNAME: ${{ steps.app_version.outputs.version_name }}
+          VCODE: ${{ steps.app_version.outputs.version_code }}
+          RELEASE_TAG: ${{ steps.app_version.outputs.release_tag }}
+          PREV_TAG: ${{ steps.app_version.outputs.prev_tag }}
+          APP_ID: ${{ steps.pkg_id.outputs.app_id }}
+          BUILD_VARIANT: ${{ steps.build_apk.outputs.build_variant }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          vname = os.environ["VNAME"]
+          vcode = os.environ["VCODE"]
+          app_id = os.environ["APP_ID"]
+          variant = os.environ["BUILD_VARIANT"]
+          prev_tag = os.environ.get("PREV_TAG", "").strip()
+          commit_short = os.environ.get("GITHUB_SHA", "")[:7]
+
+          def extract_changelog_section(version_header):
+              if not os.path.exists("CHANGELOG.md"):
+                  return ""
+              with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+                  content = f.read()
+              # Strip HTML comments
+              content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+              pattern = re.compile(
+                  rf"^##\s+\[{re.escape(version_header)}\][^\n]*\n(.*?)(?=^##\s+\[|\Z)",
+                  re.MULTILINE | re.DOTALL,
+              )
+              m = pattern.search(content)
+              if not m:
+                  return ""
+              body = re.sub(r"\n---\s*$", "", m.group(1).strip()).strip()
+              return body
+
+          notes_section = extract_changelog_section(vname)
+          section_title = f"### Novedades de v{vname}"
+
+          if not notes_section:
+              section_title = "### Cambios incluidos en esta compilación"
+              log_range = f"{prev_tag}..HEAD" if prev_tag else "-n 10"
+              cmd = ["git", "log", "--no-merges", "--pretty=format:- %s (%h)"]
+              if prev_tag:
+                  cmd.insert(2, log_range)
+              else:
+                  cmd.extend(["-n", "10"])
+              res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+              commits = res.stdout.strip() if res.returncode == 0 else ""
+              unreleased = extract_changelog_section("Unreleased")
+              parts = []
+              if commits:
+                  parts.append(commits)
+              if unreleased:
+                  parts.append(unreleased)
+              notes_section = "\n\n".join(parts).strip()
+
+          lines = [
+              "Compilación automática de **Luz Isla – Horarios Eléctricos**.",
+              "",
+              f"- **Versión:** `{vname}`",
+              f"- **Código de compilación (`versionCode`):** `{vcode}`",
+              f"- **ID de paquete:** `{app_id}`",
+              f"- **Tipo de firma:** `{variant}`",
+              f"- **Commit:** `{commit_short}`",
+              f"- **APK recomendado para la mayoría de teléfonos modernos:** `LuzIsla-v{vname}-arm64-v8a.apk` o `LuzIsla-v{vname}-universal.apk`",
+          ]
+          if notes_section:
+              lines.extend(["", section_title, "", notes_section])
+
+          with open("release-notes.md", "w", encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+          PY
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            for existing in $(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name'); do
+              if [ ! -f "release-apks/$existing" ]; then
+                echo "Deleting stale asset: $existing"
+                gh release delete-asset "$RELEASE_TAG" "$existing" --yes || true
+              fi
+            done
+          fi
+
       - name: Publish GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.app_version.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           name: "Luz Isla v${{ steps.app_version.outputs.version_name }} (Build ${{ steps.app_version.outputs.version_code }})"
+          body_path: release-notes.md
           generate_release_notes: true
           make_latest: true
-          body: |
-            Compilación automática de **Luz Isla – Horarios Eléctricos**.
-
-            - **Versión:** `${{ steps.app_version.outputs.version_name }}`
-            - **Código de compilación (`versionCode`):** `${{ steps.app_version.outputs.version_code }}`
-            - **ID de paquete:** `${{ steps.pkg_id.outputs.app_id }}`
-            - **Tipo de firma:** `${{ steps.build_apk.outputs.build_variant }}`
-            - **APK recomendado para la mayoría de teléfonos modernos:** `LuzIsla-v${{ steps.app_version.outputs.version_name }}-arm64-v8a.apk` o `LuzIsla-v${{ steps.app_version.outputs.version_name }}-universal.apk`
           files: |
             release-apks/*.apk
             release-apks/*.txt

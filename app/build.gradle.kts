@@ -1,4 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Locale
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -9,6 +11,25 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+val versionPropsFile = rootProject.file("version.properties")
+val versionProps = Properties().apply {
+  if (versionPropsFile.exists()) {
+    versionPropsFile.inputStream().use { load(it) }
+  }
+}
+val propYear = versionProps.getProperty("APP_VERSION_YEAR", "2026").trim().toInt()
+val propMonth = versionProps.getProperty("APP_VERSION_MONTH", "11").trim().toInt()
+val propDay = versionProps.getProperty("APP_VERSION_DAY", "26").trim().toInt()
+val propBuild = versionProps.getProperty("APP_VERSION_BUILD", "1").trim().toInt().coerceIn(1, 99)
+
+val defaultVersionName = String.format(Locale.US, "%d.%02d.%02d.%d", propYear, propMonth, propDay, propBuild)
+val defaultVersionCode = ((propYear % 100) * 1_000_000) + (propMonth * 10_000) + (propDay * 100) + propBuild
+
+val resolvedVersionName = project.findProperty("overrideVersionName")?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+  ?: defaultVersionName
+val resolvedVersionCode = project.findProperty("overrideVersionCode")?.toString()?.trim()?.toIntOrNull()
+  ?: defaultVersionCode
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -17,8 +38,8 @@ android {
     applicationId = "com.aistudio.luzisla.ijvapp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 26112505
-    versionName = "26112505.0"
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
