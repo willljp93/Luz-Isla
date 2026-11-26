@@ -11,9 +11,9 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
 | Documento | Contenido |
 | :--- | :--- |
 | [**Guía de Uso**](./docs/GUIA_DE_USO.md) | Manual paso a paso de todas las pantallas, filtros, rueda 3D, calendario, circuitos, relaciones, excepciones, ajustes y widgets. |
-| [**Funciones y Arquitectura**](./docs/FUNCIONES_Y_ARQUITECTURA.md) | Arquitectura MVVM, motor `ScheduleEngine`, prioridad de reglas, formato JSON (`Conf Circuitos/`), código `LUZ1-`, ciclo solar y compilación CI/CD. |
+| [**Funciones y Arquitectura**](./docs/FUNCIONES_Y_ARQUITECTURA.md) | Arquitectura MVVM, motor `ScheduleEngine`, prioridad de reglas, formato JSON (`ConfCircuitos/`), código `LUZ1-`, ciclo solar y compilación CI/CD. |
 | [**Changelog**](./CHANGELOG.md) | Registro detallado de cambios por versión y plantilla lista para futuras versiones. |
-| [**Configuración JSON comunitaria**](./Conf%20Circuitos/luz_isla_config_2026.11.24.1.json) | Archivo JSON por defecto alojado en `Conf Circuitos/` para sincronización automática desde GitHub. |
+| [**Configuración JSON comunitaria**](./ConfCircuitos/luz_isla_config.json) | Archivo JSON por defecto alojado en `ConfCircuitos/` para sincronización automática desde GitHub. |
 
 ---
 
@@ -39,7 +39,7 @@ Aplicación Android nativa, ligera y **100 % funcional sin conexión (offline-fi
   - **Edición de circuitos**: alta/edición de código, nombre personalizado, localidad/comentario, modalidad (`Fijo`, `Rotativo`, `Por fecha`, `Sin prog.`), grupo, favoritos y vivienda principal.
   - **Programación**: **Ciclos** rotativos con cálculo automático de desfases, **Grupos**, **Horarios Fijos** (`L M X J V S D` y vigencia opcional), **Excepciones** puntuales o por **rango de fechas (Desde / Hasta)**, y **Relaciones** entre circuitos (*Mismo horario*, *Horario inverso*, *Dependiente*, *Personalizada* e *Informativa*).
 - **Sincronización y transferencia**:
-  - Sincronización HTTPS directa desde GitHub (`Conf Circuitos/luz_isla_config_2026.11.24.1.json` por defecto) con respaldo local previo y preservación de favoritos, vivienda principal, nombres y comentarios propios.
+  - Sincronización HTTPS directa desde GitHub (`ConfCircuitos/luz_isla_config.json` por defecto) con respaldo local previo y preservación de favoritos, vivienda principal, nombres y comentarios propios.
   - Exportación e importación offline en **JSON** o códigos alfanuméricos compactos **`LUZ1-`** (Deflate + Base32 Crockford + SHA-256).
   - Comprobación unificada al abrir la app (JSON remoto, ciclo solar y nueva versión en GitHub Releases).
 - **Notificaciones locales, Widgets e Ícono dinámico**: avisos configurables (5, 10, 15 o 30 min), barra inferior automática o píldora plegable translúcida, widgets de escritorio e ícono dinámico vinculado a *Mi vivienda*.
@@ -72,8 +72,8 @@ Las compilaciones oficiales de este repositorio se distribuyen directamente en [
 
 ```text
 .
-├── Conf Circuitos/                     # Configuraciones JSON públicas sincronizables por HTTPS
-│   └── luz_isla_config_2026.11.24.1.json
+├── ConfCircuitos/                      # Configuraciones JSON públicas sincronizables por HTTPS
+│   └── luz_isla_config.json
 ├── docs/                               # Documentación completa para usuarios y colaboradores
 │   ├── GUIA_DE_USO.md
 │   └── FUNCIONES_Y_ARQUITECTURA.md

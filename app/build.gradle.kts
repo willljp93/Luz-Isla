@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.luzisla.ijvapp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 26112502
-    versionName = "2026.11.25.2"
+    versionCode = 26112503
+    versionName = "26112503.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

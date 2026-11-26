@@ -122,7 +122,7 @@ Contiene 5 subsecciones:
 - **Ciclo solar, ícono y bienvenida**: sincronización automática diaria de amanecer/atardecer con `sunrisesunset.io` para Nueva Gerona (o ajuste manual), ícono dinámico del lanzador y acceso para repetir el asistente.
 - **Comprobación unificada**: botón y opción automática al abrir la app para validar en un solo paso la configuración JSON remota, el ciclo solar y nuevas versiones en GitHub Releases.
 - **Sincronización por URL (HTTPS)**:
-  - URL predeterminada: `https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json`.
+  - URL predeterminada: `https://raw.githubusercontent.com/willljp93/Luz-Isla/main/ConfCircuitos/luz_isla_config.json`.
   - Acepta también enlaces `github.com/.../blob/...` (los convierte automáticamente a `raw` y codifica espacios).
   - Crea un respaldo local automático antes de aplicar cambios y **conserva siempre** tus favoritos, *Mi vivienda*, nombres personalizados y comentarios.
 - **Exportar e Importar (JSON y Código)**:

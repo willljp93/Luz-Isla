@@ -144,8 +144,11 @@ class HttpsSyncManager(
         const val LEGACY_GITHUB_SYNC_URL =
             "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/luz_isla_config_2026.11.24.1.json"
 
-        const val DEFAULT_GITHUB_SYNC_URL =
+        const val LEGACY_SPACED_GITHUB_SYNC_URL =
             "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json"
+
+        const val DEFAULT_GITHUB_SYNC_URL =
+            "https://raw.githubusercontent.com/willljp93/Luz-Isla/main/ConfCircuitos/luz_isla_config.json"
 
         private val GITHUB_BLOB_REGEX =
             Regex("^https://github\\.com/([^/]+)/([^/]+)/blob/(.+)$", RegexOption.IGNORE_CASE)
@@ -161,7 +164,10 @@ class HttpsSyncManager(
                 trimmed
             }
             val encoded = resolved.replace(" ", "%20")
-            return if (encoded.equals(LEGACY_GITHUB_SYNC_URL, ignoreCase = true)) {
+            return if (
+                encoded.equals(LEGACY_GITHUB_SYNC_URL, ignoreCase = true) ||
+                encoded.equals(LEGACY_SPACED_GITHUB_SYNC_URL, ignoreCase = true)
+            ) {
                 DEFAULT_GITHUB_SYNC_URL
             } else {
                 encoded

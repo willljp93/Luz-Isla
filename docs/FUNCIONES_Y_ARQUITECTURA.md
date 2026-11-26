@@ -59,10 +59,10 @@ Para determinar el estado de un circuito en un instante dado, el motor aplica el
 
 ---
 
-## 3. Formato JSON (`Conf Circuitos/*.json`)
+## 3. Formato JSON (`ConfCircuitos/luz_isla_config.json`)
 
-La carpeta pública [`Conf Circuitos/`](../Conf%20Circuitos/) contiene la configuración comunitaria predeterminada sincronizada por la app:
-`https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json`
+La carpeta pública [`ConfCircuitos/`](../ConfCircuitos/) contiene la configuración comunitaria predeterminada sincronizada por la app:
+`https://raw.githubusercontent.com/willljp93/Luz-Isla/main/ConfCircuitos/luz_isla_config.json`
 
 ### Esquema (`schemaVersion = 1`)
 
@@ -153,7 +153,7 @@ La carpeta pública [`Conf Circuitos/`](../Conf%20Circuitos/) contiene la config
 ```
 
 ### Reglas de sincronización segura
-- **Normalización automática**: `HttpsSyncManager.normalizeSyncUrl` convierte enlaces `github.com/.../blob/...` a `raw.githubusercontent.com/...`, codifica espacios (`%20` para `Conf Circuitos`) y migra automáticamente la ruta heredada de la raíz del repositorio hacia `Conf Circuitos/`.
+- **Normalización automática**: `HttpsSyncManager.normalizeSyncUrl` convierte enlaces `github.com/.../blob/...` a `raw.githubusercontent.com/...`, codifica espacios (`%20`) y migra automáticamente las rutas heredadas hacia `ConfCircuitos/luz_isla_config.json`.
 - **Respaldo previo**: toda sincronización o importación guarda primero una copia local restaurable en Room.
 - **Preservación personal**: el modo `MERGE_KEEP_PERSONAL` mantiene intactos favoritos, *Mi vivienda*, nombres personalizados y comentarios locales.
 
@@ -172,7 +172,7 @@ La carpeta pública [`Conf Circuitos/`](../Conf%20Circuitos/) contiene la config
 
 | Servicio | Propósito | Comportamiento offline |
 | :--- | :--- | :--- |
-| **GitHub Raw (`Conf Circuitos/*.json`)** | Descarga de horarios comunitarios configurados por URL. | Conserva programación local sin sobrescribir nada. |
+| **GitHub Raw (`ConfCircuitos/luz_isla_config.json`)** | Descarga de horarios comunitarios configurados por URL. | Conserva programación local sin sobrescribir nada. |
 | **GitHub Releases API** (`willljp93/Luz-Isla`) | Comprobación de nuevas versiones de la app y selección del APK según ABI del teléfono. | Muestra la última información cacheada sin bloquear la app. |
 | **SunriseSunset.io** | Horas reales de amanecer y atardecer para Nueva Gerona (`21.8867, -82.8056`) usadas en el degradado cielo día/noche. | Usa caché del día o los valores locales configurados (`06:30`–`18:30` por defecto). |
 

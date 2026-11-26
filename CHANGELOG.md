@@ -26,19 +26,20 @@ Plantilla para futuras versiones (copia este bloque debajo de [Unreleased] al pu
 
 ### Preparado para próximas versiones
 - Plantilla de notas limpia compatible con GitHub Releases y el lector de actualizaciones dentro de la app.
+- Estandarización universal de la carpeta y archivo de configuración comunitaria en `ConfCircuitos/luz_isla_config.json` (sin fecha fija en el nombre del archivo) y migración automática desde rutas previas.
 
 ---
 
 ## [2026.11.25.2] - 2026-11-25 (`Build 26112502`)
 
 ### Agregado
-- Carpeta dedicada `Conf Circuitos/` en el repositorio para alojar la configuración JSON comunitaria (`Conf Circuitos/luz_isla_config_2026.11.24.1.json`).
+- Carpeta dedicada `ConfCircuitos/` en el repositorio para alojar la configuración JSON comunitaria (`ConfCircuitos/luz_isla_config.json`).
 - Documentación completa para GitHub en `README.md`, `docs/GUIA_DE_USO.md`, `docs/FUNCIONES_Y_ARQUITECTURA.md` y este `CHANGELOG.md` con sección preparada para futuros lanzamientos.
 - En la barra de 24 horas: marcas verticales (ticks) cada **1 hora** en el borde inferior (mayores cada 4 h y menores cada 1 h) y diferenciación visual de tono al cruzar la medianoche (`12am` / `00h`) para distinguir dos días consecutivos.
 - Soporte en `.github/workflows/android-ci.yml` para definir un `applicationId` personalizado en CI mediante la variable `CUSTOM_APP_ID` (ej. `com.threeare.luzisla`) y mostrarlo en las notas de Release.
 
 ### Cambiado
-- **Actualización de ruta JSON por defecto**: `HttpsSyncManager` ahora apunta a `https://raw.githubusercontent.com/willljp93/Luz-Isla/main/Conf%20Circuitos/luz_isla_config_2026.11.24.1.json`, codifica espacios automáticamente en URLs copiadas y migra de forma transparente la URL heredada de la raíz del repositorio.
+- **Actualización de ruta JSON por defecto**: `HttpsSyncManager` ahora apunta a `https://raw.githubusercontent.com/willljp93/Luz-Isla/main/ConfCircuitos/luz_isla_config.json`, codifica espacios automáticamente en URLs copiadas y migra de forma transparente las rutas heredadas anteriores.
 - **Nombres de APK limpios en GitHub Releases**: los instaladores pasan a llamarse `LuzIsla-v<versión>-<arquitectura>.apk` (sin sufijos `-b<build>` ni `-debug`/`-release`).
 - **Ajustes y línea de tiempo**: cuando *Centrar línea de tiempo en la hora actual* está activo, las etiquetas muestran únicamente horas exactas en punto (`2pm`, `6pm` o `14h`, `18h`) manteniendo el cursor blanco en el minuto real.
 - **Contadores de estado**: las tarjetas y widgets muestran **`Quedan`** mientras el circuito tiene servicio y **`Faltan`** cuando está sin servicio.
