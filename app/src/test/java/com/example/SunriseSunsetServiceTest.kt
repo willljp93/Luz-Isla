@@ -69,7 +69,7 @@ class SunriseSunsetServiceTest {
         val raw24 = """
             {
               "results": {
-                "date": "2026-11-23",
+                "date": "2026-01-15",
                 "sunrise": "06:42:10",
                 "sunset": "17:39:45",
                 "timezone": "America/Havana"
@@ -79,17 +79,17 @@ class SunriseSunsetServiceTest {
         """.trimIndent()
         val parsedSameZone = SunriseSunsetService.parseResponseJson(
             rawJson = raw24,
-            fallbackDate = LocalDate.of(2026, 11, 23),
+            fallbackDate = LocalDate.of(2026, 1, 15),
             targetZoneId = ZoneId.of("America/Havana")
         )
         assertNotNull(parsedSameZone)
         assertEquals(6 * 60 + 42, parsedSameZone!!.sunriseMinutes)
         assertEquals(17 * 60 + 39, parsedSameZone.sunsetMinutes)
 
-        // Nov 23: Havana is UTC-5, Madrid is UTC+1 (+6h difference)
+        // Jan 15: Havana is UTC-5, Madrid is UTC+1 (+6h difference across all tzdata versions)
         val parsedMadrid = SunriseSunsetService.parseResponseJson(
             rawJson = raw24,
-            fallbackDate = LocalDate.of(2026, 11, 23),
+            fallbackDate = LocalDate.of(2026, 1, 15),
             targetZoneId = ZoneId.of("Europe/Madrid")
         )
         assertNotNull(parsedMadrid)
@@ -99,7 +99,7 @@ class SunriseSunsetServiceTest {
         val raw12 = """
             {
               "results": {
-                "date": "2026-11-23",
+                "date": "2026-01-15",
                 "sunrise": "6:45:00 AM",
                 "sunset": "5:40:00 PM",
                 "timezone": "America/Havana"
@@ -109,7 +109,7 @@ class SunriseSunsetServiceTest {
         """.trimIndent()
         val parsed12 = SunriseSunsetService.parseResponseJson(
             rawJson = raw12,
-            fallbackDate = LocalDate.of(2026, 11, 23),
+            fallbackDate = LocalDate.of(2026, 1, 15),
             targetZoneId = ZoneId.of("America/Havana")
         )
         assertNotNull(parsed12)

@@ -191,7 +191,8 @@ class ScheduleEngineTest {
 
     @Test
     fun `day night helper and 12h-24h formatting honor configured zoneId`() {
-        val date = LocalDate.of(2026, 11, 22)
+        // Historical standard-time date (Jan 15, 2026): Havana is UTC-5 and Madrid is UTC+1 across all tzdata versions
+        val date = LocalDate.of(2026, 1, 15)
         val noonHavana = havanaMillis(date, 12, 30)
         val nightHavana = havanaMillis(date, 22, 15)
 
@@ -201,7 +202,7 @@ class ScheduleEngineTest {
         assertEquals("12:30", ScheduleEngine.formatTime(noonHavana, use24h = true, zoneId = ScheduleEngine.HAVANA_ZONE))
         assertEquals("22:15", ScheduleEngine.formatTime(nightHavana, use24h = true, zoneId = ScheduleEngine.HAVANA_ZONE))
 
-        // UTC+5h difference check
+        // UTC-5 vs UTC+1 (+6h difference check)
         val madrid = ZoneId.of("Europe/Madrid")
         val noonMadrid = ScheduleEngine.formatTime(noonHavana, use24h = true, zoneId = madrid)
         assertEquals("18:30", noonMadrid)
@@ -233,8 +234,8 @@ class ScheduleEngineTest {
         assertEquals("GMT+0", ScheduleEngine.gmtOffsetOptions[12])
         assertEquals("GMT+14", ScheduleEngine.gmtOffsetOptions.last())
 
-        // Representative IANA resolution matches expected offset across full range
-        val winterInstant = java.time.Instant.parse("2026-11-23T12:00:00Z")
+        // Representative IANA resolution matches expected offset across full range (Jan 15, 2026 standard time)
+        val winterInstant = java.time.Instant.parse("2026-01-15T12:00:00Z")
         for (h in -12..14) {
             val zoneIdStr = ScheduleEngine.representativeZoneIdForOffset(h, winterInstant)
             val resolvedZone = ScheduleEngine.parseManualZoneId(zoneIdStr)
@@ -245,7 +246,7 @@ class ScheduleEngineTest {
 
     @Test
     fun `formatZoneSummary hides technical Etc GMT identifiers and keepAmPmTogether avoids breaking spaces`() {
-        val winterInstant = java.time.Instant.parse("2026-11-23T12:00:00Z")
+        val winterInstant = java.time.Instant.parse("2026-01-15T12:00:00Z")
         assertTrue(ScheduleEngine.isTechnicalOffsetZoneId("Etc/GMT+4"))
         assertFalse(ScheduleEngine.isTechnicalOffsetZoneId("America/Havana"))
 
@@ -256,7 +257,7 @@ class ScheduleEngineTest {
         assertFalse(formattedNbsp.contains(' '))
         assertTrue(formattedNbsp.contains('\u00A0'))
 
-        val noonHavana12 = ScheduleEngine.formatTime12h(havanaMillis(LocalDate.of(2026, 11, 23), 12, 30))
+        val noonHavana12 = ScheduleEngine.formatTime12h(havanaMillis(LocalDate.of(2026, 1, 15), 12, 30))
         assertFalse(noonHavana12.contains(' '))
         assertTrue(noonHavana12.contains('\u00A0'))
     }
