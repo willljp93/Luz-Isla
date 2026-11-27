@@ -379,8 +379,13 @@ class AppUpdateService(
         ): Boolean {
             if (remoteTag.isBlank()) return false
             val remote = parseVersion(remoteTag, releaseTitle, releaseBody)
-            val local = parseVersion(currentVersionName)
+            val remoteCode = remoteVersionCodeOverride ?: remote.buildCode ?: 0
 
+            if (remoteCode > 0 && currentVersionCode > 0) {
+                return remoteCode > currentVersionCode
+            }
+
+            val local = parseVersion(currentVersionName)
             val maxLen = maxOf(remote.parts.size, local.parts.size)
             for (i in 0 until maxLen) {
                 val r = remote.parts.getOrElse(i) { 0 }
@@ -389,7 +394,6 @@ class AppUpdateService(
                 if (r < l) return false
             }
 
-            val remoteCode = remoteVersionCodeOverride ?: remote.buildCode ?: 0
             return remoteCode > currentVersionCode
         }
 

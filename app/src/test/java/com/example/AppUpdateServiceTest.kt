@@ -239,4 +239,43 @@ class AppUpdateServiceTest {
         assertTrue(cleaned.contains("• Revisar GitHub Releases"))
         assertTrue(cleaned.contains("Nota importante"))
     }
+
+    @Test
+    fun `verify identical lower and higher remote version behavior`() {
+        val currentVersion = "2026.11.27.3"
+        val currentCode = 26112703
+
+        // Identical version should NOT be newer
+        assertFalse(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.27.3-b26112703",
+                currentVersionName = currentVersion,
+                currentVersionCode = currentCode
+            )
+        )
+
+        // Lower remote version should NOT be newer
+        assertFalse(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.27.2-b26112702",
+                currentVersionName = currentVersion,
+                currentVersionCode = currentCode
+            )
+        )
+
+        // Higher remote version SHOULD be newer
+        assertTrue(
+            AppUpdateService.isRemoteVersionNewer(
+                remoteTag = "v2026.11.27.4-b26112704",
+                currentVersionName = currentVersion,
+                currentVersionCode = currentCode
+            )
+        )
+    }
+
+    @Test
+    fun `verify BuildConfig version metadata is present and valid`() {
+        assertTrue(BuildConfig.VERSION_NAME.isNotBlank())
+        assertTrue(BuildConfig.VERSION_CODE > 0)
+    }
 }

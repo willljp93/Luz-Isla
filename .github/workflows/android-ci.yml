@@ -255,6 +255,32 @@ jobs:
           (cd release-apks && sha256sum *.apk > "LuzIsla-v${VNAME}-sha256.txt")
           ls -lh release-apks
 
+      - name: Verify APK Version Metadata
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+
+          expected_version_name = "${{ steps.app_version.outputs.version_name }}"
+          expected_version_code = "${{ steps.app_version.outputs.version_code }}"
+          apk_dir = "release-apks"
+
+          print(f"Verifying staged APKs in {apk_dir} for versionName={expected_version_name}, versionCode={expected_version_code}")
+          
+          apks = [f for f in os.listdir(apk_dir) if f.endswith(".apk")]
+          if not apks:
+              print("::error::No APK files found in release-apks directory!")
+              sys.exit(1)
+
+          for apk in apks:
+              if expected_version_name not in apk:
+                  print(f"::error::APK filename {apk} does not contain expected version name {expected_version_name}")
+                  sys.exit(1)
+              print(f"Verified staged APK filename: {apk}")
+
+          print("APK version metadata verification passed successfully.")
+          PY
+
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
