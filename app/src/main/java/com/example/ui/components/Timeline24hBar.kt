@@ -14,8 +14,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -57,10 +60,11 @@ import com.example.domain.model.TimelineSegment
 import com.example.ui.theme.LocalElectricStatusColors
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.sp
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -548,11 +552,9 @@ fun Timeline24hBar(
             val textMeasurer = rememberTextMeasurer()
             val density = LocalDensity.current
             val axisHeight = remember(density.fontScale) {
-                10.dp + (16.dp * density.fontScale.coerceAtLeast(1f))
+                10.dp + (18.dp * density.fontScale.coerceAtLeast(1f))
             }
-            val baseLabelStyle = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp
-            )
+            val baseLabelStyle = MaterialTheme.typography.labelSmall
             val onSurfaceColor = MaterialTheme.colorScheme.onSurface
             val onSurfaceVariantColor = MaterialTheme.colorScheme.onSurfaceVariant
             val primaryColor = MaterialTheme.colorScheme.primary
@@ -643,29 +645,57 @@ fun Timeline24hBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineSegmentLegend(modifier: Modifier = Modifier) {
     val statusColors = LocalElectricStatusColors.current
-    Row(
+    FlowRow(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        LegendChip(color = statusColors.service, label = "Con servicio")
-        LegendChip(color = statusColors.outage, label = "Sin servicio")
-        LegendChip(color = statusColors.unknown, label = "Sin info")
+        LegendChip(
+            color = statusColors.service,
+            icon = Icons.Filled.Bolt,
+            label = "Con servicio"
+        )
+        LegendChip(
+            color = statusColors.outage,
+            icon = Icons.Filled.PowerOff,
+            label = "Sin servicio"
+        )
+        LegendChip(
+            color = statusColors.unknown,
+            icon = Icons.AutoMirrored.Filled.HelpOutline,
+            label = "Sin info"
+        )
     }
 }
 
 @Composable
-private fun LegendChip(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun LegendChip(
+    color: Color,
+    icon: ImageVector,
+    label: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics(mergeDescendants = true) {}
+    ) {
         Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(10.dp)
+                .size(18.dp)
                 .clip(CircleShape)
                 .background(color)
-        )
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(11.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = label,
@@ -768,45 +798,66 @@ fun TimelineIntervalsSummaryList(
     val statusColors = LocalElectricStatusColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         segments.forEach { seg ->
-            val accent = when (seg.state) {
-                ScheduledState.SERVICE_SCHEDULED -> statusColors.service
-                ScheduledState.OUTAGE_SCHEDULED -> statusColors.outage
-                ScheduledState.UNKNOWN -> statusColors.unknown
-            }
-            val label = when (seg.state) {
-                ScheduledState.SERVICE_SCHEDULED -> "Con servicio"
-                ScheduledState.OUTAGE_SCHEDULED -> "Sin servicio"
-                ScheduledState.UNKNOWN -> "Sin información"
+            val (accent, onContainer, icon, label) = when (seg.state) {
+                ScheduledState.SERVICE_SCHEDULED -> Quad(
+                    statusColors.service,
+                    statusColors.onServiceContainer,
+                    Icons.Filled.Bolt,
+                    "Con servicio"
+                )
+                ScheduledState.OUTAGE_SCHEDULED -> Quad(
+                    statusColors.outage,
+                    statusColors.onOutageContainer,
+                    Icons.Filled.PowerOff,
+                    "Sin servicio"
+                )
+                ScheduledState.UNKNOWN -> Quad(
+                    statusColors.unknown,
+                    statusColors.onUnknownContainer,
+                    Icons.AutoMirrored.Filled.HelpOutline,
+                    "Sin información"
+                )
             }
             val isSelected = selectedSegment?.startMillis == seg.startMillis && selectedSegment.endMillis == seg.endMillis
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .defaultMinSize(minHeight = 48.dp)
+                    .clip(MaterialTheme.shapes.small)
                     .background(
                         if (isSelected) accent.copy(alpha = 0.14f)
                         else MaterialTheme.colorScheme.surfaceContainer
                     )
                     .clickable { onSelect(seg) }
+                    .semantics(mergeDescendants = true) {}
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(10.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
                         .background(accent)
-                )
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "${ScheduleEngine.formatTime(seg.startMillis, use24h, zoneId)}\u2060–\u2060${ScheduleEngine.formatTime(seg.endMillis, use24h, zoneId)}",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.weight(1f)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "$label (${ScheduleEngine.formatDurationHuman(seg.durationMillis)})",
                     style = MaterialTheme.typography.bodySmall,
-                    color = accent,
+                    color = onContainer,
                     fontWeight = FontWeight.SemiBold
                 )
             }

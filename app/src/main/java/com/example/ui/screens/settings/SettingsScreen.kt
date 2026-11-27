@@ -63,13 +63,16 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.sync.SunriseSunsetService
@@ -79,13 +82,14 @@ import kotlinx.coroutines.delay
 
 enum class SettingsCategoryTab(
     val label: String,
+    val compactLabel: String,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector
 ) {
-    STATUS_TIME("Estado y Hora", Icons.Filled.Schedule, Icons.Outlined.Schedule),
-    APPEARANCE("Apariencia", Icons.Filled.Palette, Icons.Outlined.Palette),
-    DATA_SYNC("Datos y Sync", Icons.Filled.CloudSync, Icons.Outlined.CloudSync),
-    NOTIFICATIONS_APP("Avisos y App", Icons.Filled.Notifications, Icons.Outlined.Notifications)
+    STATUS_TIME("Estado y Hora", "Estado", Icons.Filled.Schedule, Icons.Outlined.Schedule),
+    APPEARANCE("Apariencia", "Estilo", Icons.Filled.Palette, Icons.Outlined.Palette),
+    DATA_SYNC("Datos y Sync", "Datos", Icons.Filled.CloudSync, Icons.Outlined.CloudSync),
+    NOTIFICATIONS_APP("Avisos y App", "Avisos", Icons.Filled.Notifications, Icons.Outlined.Notifications)
 }
 
 @Composable
@@ -171,16 +175,26 @@ fun SettingsScreen(
                     .widthIn(max = 840.dp)
             ) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 10.dp)
                 ) {
-                    Text(
-                        text = "Ajustes",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "Ajustes",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.semantics { heading() }
+                        )
+                        Text(
+                            text = "${selectedTab.label} • Preferencias, datos y avisos",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     SettingsCategoryPrimaryTabs(
                         selectedTab = selectedTab,
                         onSelectTab = { selectedTab = it }
@@ -311,6 +325,14 @@ fun SettingsScreen(
         )
     }
 
+    state.pendingModifiedImportWarning?.let { warning ->
+        ModifiedJsonWarningDialog(
+            warning = warning,
+            onContinueAnyway = viewModel::confirmInspectModifiedJson,
+            onCancel = viewModel::dismissModifiedJsonWarning
+        )
+    }
+
     state.pendingImport?.let { review ->
         ImportReviewDialog(
             review = review,
@@ -374,12 +396,11 @@ private fun SettingsCategoryPrimaryTabs(
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         modifier = modifier.fillMaxWidth()
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val useHorizontalTabLayout = maxWidth >= 560.dp
-            val isVeryNarrow = maxWidth < 330.dp
 
             PrimaryTabRow(
                 selectedTabIndex = selectedTab.ordinal,
@@ -429,18 +450,22 @@ private fun SettingsCategoryPrimaryTabs(
                         unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .defaultMinSize(minHeight = 48.dp)
+                            .semantics {
+                                contentDescription = tab.label
+                                selected = isSelected
+                            }
                             .testTag("settings_tab_${tab.name.lowercase()}")
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 3.dp, vertical = 4.dp)
-                                .defaultMinSize(minHeight = if (useHorizontalTabLayout) 40.dp else 54.dp)
+                                .padding(horizontal = 2.dp, vertical = 4.dp)
+                                .defaultMinSize(minHeight = if (useHorizontalTabLayout) 44.dp else 54.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(activeHighlightColor)
                                 .padding(
-                                    horizontal = if (useHorizontalTabLayout) 8.dp else 3.dp,
+                                    horizontal = if (useHorizontalTabLayout) 8.dp else 2.dp,
                                     vertical = if (useHorizontalTabLayout) 10.dp else 6.dp
                                 )
                         ) {
@@ -457,7 +482,7 @@ private fun SettingsCategoryPrimaryTabs(
                                     )
                                     Text(
                                         text = tab.label,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelLarge,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = contentTint,
                                         maxLines = 1,
@@ -476,16 +501,12 @@ private fun SettingsCategoryPrimaryTabs(
                                         modifier = Modifier.size(19.dp)
                                     )
                                     Text(
-                                        text = tab.label,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = if (isVeryNarrow) 10.sp else 11.sp,
-                                            lineHeight = if (isVeryNarrow) 12.sp else 13.sp,
-                                            letterSpacing = (-0.1).sp
-                                        ),
+                                        text = tab.compactLabel,
+                                        style = MaterialTheme.typography.labelMedium,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = contentTint,
                                         textAlign = TextAlign.Center,
-                                        maxLines = 2,
+                                        maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }

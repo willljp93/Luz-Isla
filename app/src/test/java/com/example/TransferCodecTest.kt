@@ -238,6 +238,57 @@ class TransferCodecTest {
             HttpsSyncManager.normalizeSyncUrl("  ${HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL}  ")
         )
     }
+
+    @Test
+    fun `json without sha256 decodes cleanly as MISSING while typed codec exceptions classify errors`() {
+        val noHashJson = """
+            {
+              "schemaVersion": 1,
+              "configVersion": 2,
+              "circuits": [
+                { "code": "A210", "scheduleType": "CUSTOM" }
+              ]
+            }
+        """.trimIndent()
+        val decoded = ConfigCodec.decodeFromJson(noHashJson, verifySha256 = true)
+        assertFalse(decoded.sha256Verified)
+        assertEquals(com.example.transfer.Sha256Status.MISSING, decoded.sha256Status)
+
+        val badSchema = """{"schemaVersion":4,"configVersion":1,"circuits":[{"code":"A210"}]}"""
+        var gotSchemaError = false
+        try {
+            ConfigCodec.decodeFromJson(badSchema)
+        } catch (_: com.example.transfer.ConfigCodecException.IncompatibleSchemaException) {
+            gotSchemaError = true
+        }
+        assertTrue(gotSchemaError)
+
+        val unrelated = """{"status":"ok"}"""
+        var gotIncompatibleConfig = false
+        try {
+            ConfigCodec.decodeFromJson(unrelated)
+        } catch (_: com.example.transfer.ConfigCodecException.IncompatibleConfigException) {
+            gotIncompatibleConfig = true
+        }
+        assertTrue(gotIncompatibleConfig)
+
+        var gotMalformed = false
+        try {
+            ConfigCodec.decodeFromJson("{ not valid json")
+        } catch (_: com.example.transfer.ConfigCodecException.MalformedJsonException) {
+            gotMalformed = true
+        }
+        assertTrue(gotMalformed)
+
+        val oversized = ByteArray(100) { 'x'.code.toByte() }
+        var gotTooLarge = false
+        try {
+            ConfigCodec.readBytesWithLimit(oversized.inputStream(), maxBytes = 64)
+        } catch (_: com.example.transfer.ConfigCodecException.PayloadTooLargeException) {
+            gotTooLarge = true
+        }
+        assertTrue(gotTooLarge)
+    }
 }
 
 

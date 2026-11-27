@@ -150,9 +150,35 @@ class MainActivity : ComponentActivity() {
                 if (currentPrefs == null) {
                     Surface(
                         color = MaterialTheme.colorScheme.background,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("app_initial_loading")
                     ) {
-                        Box(modifier = Modifier.fillMaxSize())
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp)
+                            ) {
+                                com.example.ui.components.IslaEmblemBadge(
+                                    state = null,
+                                    enableAnimation = false,
+                                    size = 64.dp
+                                )
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    strokeWidth = 3.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Text(
+                                    text = "Cargando Luz Isla…",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 } else {
                     Crossfade(targetState = currentPrefs.onboardingCompleted, label = "onboarding_gate") { completed ->
@@ -174,6 +200,8 @@ class MainActivity : ComponentActivity() {
                                         prefsRepo.setTimezonePreference(useSystemTz, manualTz)
                                         prefsRepo.setUse24HourFormat(use24h)
                                         prefsRepo.setOnboardingCompleted(true)
+                                        ScheduleNotificationManager.rescheduleUpcomingNotifications(applicationContext)
+                                        com.example.widget.WidgetUpdateHelper.refreshAllWidgets(applicationContext)
                                     }
                                 }
                             )
@@ -352,7 +380,9 @@ private fun LuzIslaApp(
                         }
                 ) {
                     if (useNavRail) {
-                        NavigationRail {
+                        NavigationRail(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
                             tabs.forEach { tab ->
                                 val selected = currentDestination?.hasRoute(tab.route::class) == true
                                 val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
@@ -429,13 +459,13 @@ private fun LuzIslaApp(
                             Surface(
                                 onClick = { isBottomBarVisible = false },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.56f),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
                                 tonalElevation = 1.dp,
                                 shadowElevation = 1.dp,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .padding(bottom = 4.dp)
-                                    .defaultMinSize(minWidth = 56.dp, minHeight = 32.dp)
+                                    .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
                                     .pointerInput(Unit) {
                                         var dragY = 0f
                                         detectVerticalDragGestures(
@@ -453,19 +483,22 @@ private fun LuzIslaApp(
                             ) {
                                 Box(
                                     contentAlignment = Alignment.Center,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.KeyboardArrowDown,
                                         contentDescription = "Ocultar barra de navegación",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
                         }
 
-                        NavigationBar(modifier = Modifier.testTag("main_bottom_bar")) {
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier.testTag("main_bottom_bar")
+                        ) {
                             tabs.forEach { tab ->
                                 val selected = currentDestination?.hasRoute(tab.route::class) == true
                                 val showUpdateDot = tab.route == SettingsRoute && hasAppUpdateAvailable
@@ -518,12 +551,12 @@ private fun LuzIslaApp(
                         Surface(
                             onClick = { isBottomBarVisible = true },
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.28f),
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f),
+                            tonalElevation = 1.dp,
+                            shadowElevation = 1.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
-                                .defaultMinSize(minWidth = 60.dp, minHeight = 34.dp)
+                                .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
                                 .pointerInput(Unit) {
                                     var dragY = 0f
                                     detectVerticalDragGestures(
@@ -541,12 +574,12 @@ private fun LuzIslaApp(
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowUp,
                                     contentDescription = "Mostrar barra de navegación",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }

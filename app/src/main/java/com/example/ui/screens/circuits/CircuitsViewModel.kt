@@ -44,6 +44,7 @@ enum class ProgrammingSubTab(val label: String) {
 }
 
 data class CircuitsAdminUiState(
+    val isLoading: Boolean = true,
     val primaryTab: CircuitsPrimaryTab = CircuitsPrimaryTab.CIRCUIT_EDITOR,
     val programmingSubTab: ProgrammingSubTab = ProgrammingSubTab.CYCLES,
     val searchQuery: String = "",
@@ -130,6 +131,7 @@ class CircuitsViewModel(
         }
 
         CircuitsAdminUiState(
+            isLoading = false,
             primaryTab = controls.primaryTab,
             programmingSubTab = controls.programmingSubTab,
             searchQuery = controls.searchQuery,

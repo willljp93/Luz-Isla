@@ -12,11 +12,28 @@ import com.example.domain.version.AppVersionConfig
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.zip.Deflater
 import java.util.zip.Inflater
+
+enum class Sha256Status {
+    VERIFIED,
+    MISSING,
+    MISMATCH_IGNORED
+}
+
+sealed class ConfigCodecException(message: String) : IllegalArgumentException(message) {
+    class MalformedJsonException(message: String) : ConfigCodecException(message)
+    class IncompatibleSchemaException(message: String) : ConfigCodecException(message)
+    class HashMismatchException(message: String) : ConfigCodecException(message)
+    class IncompatibleConfigException(message: String) : ConfigCodecException(message)
+    class PayloadTooLargeException(message: String) : ConfigCodecException(message)
+}
 
 @Serializable
 data class LuzIslaConfigPayload(
@@ -50,7 +67,8 @@ data class LuzIslaConfigPayload(
 data class DecodedConfigResult(
     val payload: LuzIslaConfigPayload,
     val snapshot: ScheduleSnapshot,
-    val sha256Verified: Boolean
+    val sha256Verified: Boolean,
+    val sha256Status: Sha256Status = if (sha256Verified) Sha256Status.VERIFIED else Sha256Status.MISSING
 )
 
 data class ImportSummary(
@@ -66,7 +84,8 @@ data class ImportSummary(
     val forecastCount: Int,
     val exceptionCount: Int,
     val relationCount: Int,
-    val sha256Verified: Boolean
+    val sha256Verified: Boolean,
+    val sha256Status: Sha256Status = if (sha256Verified) Sha256Status.VERIFIED else Sha256Status.MISSING
 ) {
     val displayVersion: String
         get() = AppVersionConfig.formatConfigVersionDisplay(
@@ -78,7 +97,18 @@ data class ImportSummary(
 
 object ConfigCodec {
     const val CODE_PREFIX = "LUZ1-"
-    private const val MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024
+    const val MAX_CONFIG_BYTES = 2 * 1024 * 1024
+    private const val MAX_DECOMPRESSED_BYTES = MAX_CONFIG_BYTES
+
+    private val COMPATIBLE_ROOT_KEYS = setOf(
+        "circuits",
+        "groups",
+        "cycles",
+        "fixedRules",
+        "explicitForecasts",
+        "manualExceptions",
+        "relations"
+    )
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -146,27 +176,54 @@ object ConfigCodec {
 
     fun decodeFromJson(rawJson: String, verifySha256: Boolean = true): DecodedConfigResult {
         val trimmed = rawJson.trim()
-        if (trimmed.isEmpty()) throw IllegalArgumentException("El archivo JSON está vacío.")
+        if (trimmed.isEmpty()) {
+            throw ConfigCodecException.MalformedJsonException("El archivo JSON está vacío.")
+        }
 
-        val parsed = runCatching { json.decodeFromString<LuzIslaConfigPayload>(trimmed) }
-            .getOrElse { throw IllegalArgumentException("Formato JSON inválido: ${it.message}") }
+        val rootElement = runCatching { json.parseToJsonElement(trimmed) }
+            .getOrElse {
+                throw ConfigCodecException.MalformedJsonException(
+                    "Formato JSON inválido o malformado: ${it.message}"
+                )
+            }
+        if (rootElement !is JsonObject) {
+            throw ConfigCodecException.MalformedJsonException(
+                "El archivo JSON debe contener un objeto de configuración en la raíz."
+            )
+        }
+
+        val parsed = runCatching { json.decodeFromJsonElement<LuzIslaConfigPayload>(rootElement) }
+            .getOrElse {
+                throw ConfigCodecException.MalformedJsonException(
+                    "Formato JSON inválido o tipos de datos incorrectos: ${it.message}"
+                )
+            }
 
         if (parsed.schemaVersion != LuzIslaConfigPayload.CURRENT_SCHEMA_VERSION) {
-            throw IllegalArgumentException(
+            throw ConfigCodecException.IncompatibleSchemaException(
                 "Versión de esquema incompatible: ${parsed.schemaVersion}. Se requiere versión ${LuzIslaConfigPayload.CURRENT_SCHEMA_VERSION}."
             )
         }
 
-        val shaVerified = if (parsed.sha256.isNotBlank()) {
+        val hasCompatibleSection = COMPATIBLE_ROOT_KEYS.any { it in rootElement }
+        if (!hasCompatibleSection || parsed.configVersion < 1) {
+            throw ConfigCodecException.IncompatibleConfigException(
+                "Configuración no compatible con Luz Isla: el archivo no contiene secciones válidas de horarios o la versión es inválida."
+            )
+        }
+
+        val shaStatus = if (parsed.sha256.isNotBlank()) {
             val canonicalUnsigned = json.encodeToString(parsed.copy(sha256 = ""))
             val expectedHash = sha256Hex(canonicalUnsigned.toByteArray(Charsets.UTF_8))
             val matches = expectedHash.equals(parsed.sha256.trim(), ignoreCase = true)
             if (!matches && verifySha256) {
-                throw IllegalArgumentException("Fallo de integridad SHA-256: los datos fueron alterados o están dañados.")
+                throw ConfigCodecException.HashMismatchException(
+                    "Fallo de integridad SHA-256: el hash del archivo no coincide con su contenido (fue alterado o está dañado)."
+                )
             }
-            matches
+            if (matches) Sha256Status.VERIFIED else Sha256Status.MISMATCH_IGNORED
         } else {
-            false
+            Sha256Status.MISSING
         }
 
         val deduplicatedCircuits = parsed.circuits
@@ -186,8 +243,35 @@ object ConfigCodec {
         return DecodedConfigResult(
             payload = parsed.copy(circuits = deduplicatedCircuits),
             snapshot = snapshot,
-            sha256Verified = shaVerified
+            sha256Verified = shaStatus == Sha256Status.VERIFIED,
+            sha256Status = shaStatus
         )
+    }
+
+    fun readBytesWithLimit(
+        input: InputStream,
+        maxBytes: Int = MAX_CONFIG_BYTES,
+        expectedLengthHint: Long = -1L
+    ): ByteArray {
+        val initialCapacity = expectedLengthHint
+            .takeIf { it in 1L..maxBytes.toLong() }
+            ?.toInt()
+            ?: 8192
+        val output = ByteArrayOutputStream(initialCapacity)
+        val buffer = ByteArray(8192)
+        var totalRead = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read == -1) break
+            totalRead += read
+            if (totalRead > maxBytes.toLong()) {
+                throw ConfigCodecException.PayloadTooLargeException(
+                    "El archivo supera el límite seguro de ${maxBytes / (1024 * 1024)} MB."
+                )
+            }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
     }
 
     fun encodeToAlphanumericCode(payload: LuzIslaConfigPayload): String {
@@ -206,24 +290,30 @@ object ConfigCodec {
 
     fun decodeFromAlphanumericCode(codeInput: String): DecodedConfigResult {
         val trimmed = codeInput.trim()
-        if (trimmed.isEmpty()) throw IllegalArgumentException("El código está vacío.")
+        if (trimmed.isEmpty()) {
+            throw ConfigCodecException.MalformedJsonException("El código está vacío.")
+        }
         val normalized = trimmed.replace("\\s+".toRegex(), "")
         if (!normalized.startsWith(CODE_PREFIX, ignoreCase = true)) {
             val maybeVersion = normalized.take(4)
             if (maybeVersion.startsWith("LUZ", ignoreCase = true)) {
-                throw IllegalArgumentException("Versión de código incompatible ($maybeVersion). Actualiza la aplicación.")
+                throw ConfigCodecException.IncompatibleSchemaException(
+                    "Versión de código incompatible ($maybeVersion). Actualiza la aplicación."
+                )
             }
-            throw IllegalArgumentException("Formato de código no reconocido. Debe comenzar con $CODE_PREFIX")
+            throw ConfigCodecException.IncompatibleConfigException(
+                "Formato de código no reconocido. Debe comenzar con $CODE_PREFIX"
+            )
         }
 
         val body = normalized.substring(CODE_PREFIX.length)
         if (body.length < 8) {
-            throw IllegalArgumentException("El código está incompleto o truncado.")
+            throw ConfigCodecException.MalformedJsonException("El código está incompleto o truncado.")
         }
 
         val envelope = CrockfordBase32.decode(body)
         if (envelope.size <= 4) {
-            throw IllegalArgumentException("El código es demasiado corto o está dañado.")
+            throw ConfigCodecException.MalformedJsonException("El código es demasiado corto o está dañado.")
         }
 
         val embeddedCheck = envelope.copyOfRange(0, 4)
@@ -232,7 +322,9 @@ object ConfigCodec {
 
         val computedCheck = sha256Bytes(jsonBytes).copyOfRange(0, 4)
         if (!embeddedCheck.contentEquals(computedCheck)) {
-            throw IllegalArgumentException("Error de integridad: el código está incompleto o contiene caracteres alterados.")
+            throw ConfigCodecException.HashMismatchException(
+                "Error de integridad: el código está incompleto o contiene caracteres alterados."
+            )
         }
 
         return decodeFromJson(String(jsonBytes, Charsets.UTF_8))
@@ -253,7 +345,8 @@ object ConfigCodec {
             forecastCount = decoded.snapshot.explicitForecasts.size,
             exceptionCount = decoded.snapshot.manualExceptions.size,
             relationCount = decoded.snapshot.relations.size,
-            sha256Verified = decoded.sha256Verified
+            sha256Verified = decoded.sha256Verified,
+            sha256Status = decoded.sha256Status
         )
     }
 
@@ -287,21 +380,23 @@ object ConfigCodec {
                 val count = inflater.inflate(buffer)
                 if (count == 0) {
                     if (inflater.needsInput()) {
-                        throw IllegalArgumentException("Datos comprimidos incompletos.")
+                        throw ConfigCodecException.MalformedJsonException("Datos comprimidos incompletos.")
                     }
                     break
                 }
                 totalRead += count
                 if (totalRead > MAX_DECOMPRESSED_BYTES) {
-                    throw IllegalArgumentException("El paquete supera el tamaño máximo permitido (2 MB).")
+                    throw ConfigCodecException.PayloadTooLargeException(
+                        "El paquete supera el tamaño máximo permitido (2 MB)."
+                    )
                 }
                 out.write(buffer, 0, count)
             }
             return out.toByteArray()
-        } catch (e: IllegalArgumentException) {
+        } catch (e: ConfigCodecException) {
             throw e
         } catch (e: Exception) {
-            throw IllegalArgumentException("No se pudo descomprimir el código: ${e.message}")
+            throw ConfigCodecException.MalformedJsonException("No se pudo descomprimir el código: ${e.message}")
         } finally {
             inflater.end()
         }

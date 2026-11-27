@@ -65,7 +65,8 @@ object SeedDataProvider {
                 isPrimaryHome = spec.code == "A210",
                 displayOrder = index,
                 createdAt = nowMillis,
-                updatedAt = nowMillis
+                updatedAt = nowMillis,
+                dataOrigin = RecordOrigin.LEGACY.name
             )
         }
     }
@@ -77,7 +78,8 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 9 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Fijo 1 · Diario 09:00–17:00"
+            label = "Fijo 1 · Diario 09:00–17:00",
+            dataOrigin = RecordOrigin.LEGACY.name
         ),
         FixedScheduleRuleEntity(
             id = "fixed_a230",
@@ -85,7 +87,8 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 9 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Fijo 1 · Diario 09:00–17:00"
+            label = "Fijo 1 · Diario 09:00–17:00",
+            dataOrigin = RecordOrigin.LEGACY.name
         ),
         FixedScheduleRuleEntity(
             id = "fixed_a020",
@@ -93,7 +96,8 @@ object SeedDataProvider {
             daysOfWeekMask = 0b1111111,
             startMinuteOfDay = 8 * 60,
             endMinuteOfDay = 17 * 60,
-            label = "Fijo 2 · Diario 08:00–17:00"
+            label = "Fijo 2 · Diario 08:00–17:00",
+            dataOrigin = RecordOrigin.LEGACY.name
         )
     )
 
@@ -108,7 +112,8 @@ object SeedDataProvider {
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 phaseOffsetMinutes = 0,
-                isActive = true
+                isActive = true,
+                dataOrigin = RecordOrigin.LEGACY.name
             ),
             ScheduleGroupEntity(
                 id = "grp_g2",
@@ -118,7 +123,8 @@ object SeedDataProvider {
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 phaseOffsetMinutes = 240,
-                isActive = true
+                isActive = true,
+                dataOrigin = RecordOrigin.LEGACY.name
             ),
             ScheduleGroupEntity(
                 id = "grp_g3",
@@ -128,7 +134,8 @@ object SeedDataProvider {
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 phaseOffsetMinutes = 480,
-                isActive = true
+                isActive = true,
+                dataOrigin = RecordOrigin.LEGACY.name
             ),
             ScheduleGroupEntity(
                 id = "grp_g4",
@@ -138,7 +145,8 @@ object SeedDataProvider {
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 phaseOffsetMinutes = 720,
-                isActive = true
+                isActive = true,
+                dataOrigin = RecordOrigin.LEGACY.name
             )
         )
     }
@@ -154,7 +162,8 @@ object SeedDataProvider {
                 outageDurationMinutes = 720,
                 referenceEpochMillis = baseRef,
                 orderedGroupIdsCsv = "grp_g1,grp_g2,grp_g3,grp_g4",
-                isActive = true
+                isActive = true,
+                dataOrigin = RecordOrigin.LEGACY.name
             )
         )
     }

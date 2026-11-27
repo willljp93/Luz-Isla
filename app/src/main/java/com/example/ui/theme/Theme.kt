@@ -22,24 +22,32 @@ import com.example.domain.model.ThemeMode
 data class ElectricStatusColors(
     val service: Color,
     val serviceContainer: Color,
+    val onServiceContainer: Color,
     val outage: Color,
     val outageContainer: Color,
+    val onOutageContainer: Color,
     val unknown: Color,
     val unknownContainer: Color,
+    val onUnknownContainer: Color,
     val favorite: Color,
-    val favoriteContainer: Color
+    val favoriteContainer: Color,
+    val onFavoriteContainer: Color
 )
 
 val LocalElectricStatusColors = staticCompositionLocalOf {
     ElectricStatusColors(
         service = ServiceGreenLight,
         serviceContainer = ServiceGreenBgLight,
+        onServiceContainer = ServiceGreenOnBgLight,
         outage = OutageRedLight,
         outageContainer = OutageRedBgLight,
+        onOutageContainer = OutageRedOnBgLight,
         unknown = UnknownGrayLight,
         unknownContainer = UnknownGrayBgLight,
+        onUnknownContainer = UnknownGrayOnBgLight,
         favorite = FavoriteGoldLight,
-        favoriteContainer = FavoriteGoldBgLight
+        favoriteContainer = FavoriteGoldBgLight,
+        onFavoriteContainer = FavoriteGoldOnBgLight
     )
 }
 
@@ -64,10 +72,13 @@ private val LightColorScheme = lightColorScheme(
     onSurface = LightOnSurface,
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = LightOnSurfaceVariant,
-    surfaceContainerLow = Color(0xFFFFFFFF),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFFAFDFB),
     surfaceContainer = Color(0xFFF0F5F2),
     surfaceContainerHigh = Color(0xFFE6EEEA),
-    outline = LightOutline
+    surfaceContainerHighest = Color(0xFFDCE6E1),
+    outline = LightOutline,
+    outlineVariant = LightOutlineVariant
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -89,10 +100,13 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = DarkOnSurface,
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = DarkOnSurfaceVariant,
+    surfaceContainerLowest = Color(0xFF0E1613),
     surfaceContainerLow = Color(0xFF141E1B),
     surfaceContainer = Color(0xFF192521),
     surfaceContainerHigh = Color(0xFF21302B),
-    outline = DarkOutline
+    surfaceContainerHighest = Color(0xFF2A3B35),
+    outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant
 )
 
 private val LuzIslaShapes = Shapes(
@@ -127,23 +141,31 @@ fun LuzIslaTheme(
         ElectricStatusColors(
             service = ServiceGreenDark,
             serviceContainer = ServiceGreenBgDark,
+            onServiceContainer = ServiceGreenOnBgDark,
             outage = OutageRedDark,
             outageContainer = OutageRedBgDark,
+            onOutageContainer = OutageRedOnBgDark,
             unknown = UnknownGrayDark,
             unknownContainer = UnknownGrayBgDark,
+            onUnknownContainer = UnknownGrayOnBgDark,
             favorite = FavoriteGoldDark,
-            favoriteContainer = FavoriteGoldBgDark
+            favoriteContainer = FavoriteGoldBgDark,
+            onFavoriteContainer = FavoriteGoldOnBgDark
         )
     } else {
         ElectricStatusColors(
             service = ServiceGreenLight,
             serviceContainer = ServiceGreenBgLight,
+            onServiceContainer = ServiceGreenOnBgLight,
             outage = OutageRedLight,
             outageContainer = OutageRedBgLight,
+            onOutageContainer = OutageRedOnBgLight,
             unknown = UnknownGrayLight,
             unknownContainer = UnknownGrayBgLight,
+            onUnknownContainer = UnknownGrayOnBgLight,
             favorite = FavoriteGoldLight,
-            favoriteContainer = FavoriteGoldBgLight
+            favoriteContainer = FavoriteGoldBgLight,
+            onFavoriteContainer = FavoriteGoldOnBgLight
         )
     }
 

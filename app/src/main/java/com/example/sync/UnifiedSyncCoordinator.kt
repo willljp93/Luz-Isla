@@ -3,8 +3,7 @@ package com.example.sync
 import android.content.Context
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
-import com.example.notifications.ScheduleNotificationManager
-import com.example.widget.WidgetUpdateHelper
+import com.example.transfer.Sha256Status
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.ZoneId
@@ -35,19 +34,30 @@ class UnifiedSyncCoordinator(
             prefs.syncUrl.isBlank() -> "Sin URL configurada"
             !shouldRunUrlSync -> "Auto (${prefs.syncIntervalHours}h)"
             else -> {
-                when (val outcome = HttpsSyncManager(repository, prefsRepo).syncFromUrl(prefs.syncUrl, forceApply = false)) {
+                when (val outcome = HttpsSyncManager(repository, prefsRepo, appContext = appContext).syncFromUrl(prefs.syncUrl, forceApply = false)) {
                     is SyncOutcome.Updated -> {
                         forecastUpdated = true
-                        ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
-                        WidgetUpdateHelper.refreshAllWidgets(appContext)
                         val label = outcome.versionName.ifBlank { outcome.version.toString() }
-                        "Actualizado (v$label)"
+                        if (outcome.sha256Status == Sha256Status.MISSING) {
+                            "Actualizado (v$label, sin SHA-256)"
+                        } else {
+                            "Actualizado (v$label)"
+                        }
                     }
                     is SyncOutcome.UpToDate -> {
                         val label = outcome.versionName.ifBlank { "v${outcome.version}" }
                         "Al día ($label)"
                     }
-                    is SyncOutcome.Failure -> "Sin conexión"
+                    is SyncOutcome.Failure -> when (outcome.errorType) {
+                        SyncErrorType.NETWORK_ERROR -> "Sin conexión"
+                        SyncErrorType.HTTP_ERROR -> "Error HTTP"
+                        SyncErrorType.INSECURE_URL -> "URL no segura"
+                        SyncErrorType.FILE_TOO_LARGE -> "Archivo > 2 MB"
+                        SyncErrorType.MALFORMED_JSON -> "JSON inválido"
+                        SyncErrorType.INCOMPATIBLE_SCHEMA -> "Esquema incompatible"
+                        SyncErrorType.HASH_MISMATCH -> "SHA-256 incorrecto"
+                        SyncErrorType.INCOMPATIBLE_CONFIG -> "Config. no compatible"
+                    }
                 }
             }
         }

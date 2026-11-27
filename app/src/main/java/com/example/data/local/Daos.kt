@@ -25,10 +25,13 @@ interface CircuitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(circuits: List<CircuitEntity>)
 
+    @Query("SELECT * FROM circuits WHERE groupId = :groupId ORDER BY displayOrder ASC, code ASC")
+    suspend fun getByGroupId(groupId: String): List<CircuitEntity>
+
     @Update
     suspend fun updateAll(circuits: List<CircuitEntity>)
 
-    @Query("DELETE FROM circuits WHERE code = :code")
+    @Query("DELETE FROM circuits WHERE UPPER(TRIM(code)) = UPPER(TRIM(:code))")
     suspend fun deleteByCode(code: String)
 
     @Query("DELETE FROM circuits")
@@ -73,7 +76,7 @@ interface FixedScheduleRuleDao {
     @Query("DELETE FROM fixed_schedule_rules WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("DELETE FROM fixed_schedule_rules WHERE circuitCode = :code")
+    @Query("DELETE FROM fixed_schedule_rules WHERE UPPER(TRIM(circuitCode)) = UPPER(TRIM(:code))")
     suspend fun deleteByCircuitCode(code: String)
 
     @Query("DELETE FROM fixed_schedule_rules")
@@ -118,6 +121,9 @@ interface ManualExceptionDao {
     @Query("DELETE FROM manual_exceptions WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM manual_exceptions WHERE UPPER(TRIM(circuitCode)) = UPPER(TRIM(:code))")
+    suspend fun deleteByCircuitCode(code: String)
+
     @Query("DELETE FROM manual_exceptions")
     suspend fun deleteAll()
 }
@@ -138,6 +144,9 @@ interface CircuitRelationDao {
 
     @Query("DELETE FROM circuit_relations WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM circuit_relations WHERE UPPER(TRIM(sourceCircuitCode)) = UPPER(TRIM(:code)) OR UPPER(TRIM(targetCircuitCode)) = UPPER(TRIM(:code))")
+    suspend fun deleteByCircuitCode(code: String)
 
     @Query("DELETE FROM circuit_relations")
     suspend fun deleteAll()

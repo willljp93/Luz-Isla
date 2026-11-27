@@ -50,6 +50,7 @@ import com.example.data.repository.ImportMergeMode
 import com.example.domain.engine.ScheduleEngine
 import com.example.sync.SunriseSunsetService
 import com.example.transfer.ConfigCodec
+import com.example.transfer.Sha256Status
 import com.example.ui.components.TimeSelectorField
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import java.time.ZoneId
@@ -167,10 +168,22 @@ fun ImportReviewDialog(
                 Text("• Horarios fijos: ${s.fixedRuleCount}")
                 Text("• Horarios por fecha: ${s.forecastCount}")
                 Text("• Excepciones: ${s.exceptionCount} • Relaciones: ${s.relationCount}")
+                val (integrityText, integrityColor) = when (s.sha256Status) {
+                    Sha256Status.VERIFIED ->
+                        "Integridad SHA-256: Verificada correctamente (comprueba integridad, no autentica al autor)" to
+                            MaterialTheme.colorScheme.primary
+                    Sha256Status.MISSING ->
+                        "Sin SHA-256: formato anterior o edición manual (integridad no verificada)" to
+                            MaterialTheme.colorScheme.tertiary
+                    Sha256Status.MISMATCH_IGNORED ->
+                        "ALERTA: El SHA-256 no coincide con el archivo. Confirmado manualmente bajo tu responsabilidad." to
+                            MaterialTheme.colorScheme.error
+                }
                 Text(
-                    text = if (s.sha256Verified) "Integridad SHA-256: Verificada correctamente" else "Integridad SHA-256: No incluida en JSON externo",
+                    text = integrityText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = integrityColor,
+                    fontWeight = if (s.sha256Status == Sha256Status.MISMATCH_IGNORED) FontWeight.SemiBold else FontWeight.Normal
                 )
                 if (s.includesPersonalData) {
                     Row(
@@ -213,6 +226,53 @@ fun ImportReviewDialog(
                 ) {
                     Text("Cancelar")
                 }
+            }
+        }
+    )
+}
+
+@Composable
+fun ModifiedJsonWarningDialog(
+    warning: PendingModifiedImportWarning,
+    onContinueAnyway: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = {
+            Text(
+                text = "Archivo modificado o dañado",
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = warning.errorMessage,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Si editaste el archivo manualmente, puedes continuar bajo tu responsabilidad. Recuerda que SHA-256 solo verifica que el archivo no haya cambiado, no autentica quién lo creó.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            OutlinedButton(
+                onClick = onContinueAnyway,
+                modifier = Modifier.testTag("modified_json_confirm_anyway_button")
+            ) {
+                Text("Revisar bajo mi responsabilidad")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onCancel,
+                modifier = Modifier.testTag("modified_json_cancel_button")
+            ) {
+                Text("Cancelar")
             }
         }
     )

@@ -9,20 +9,56 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.local.AppDatabase
+import com.example.data.preferences.UserPreferences
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.domain.engine.ScheduleEngine
+import com.example.domain.model.ScheduleSnapshot
 import com.example.domain.model.ScheduledState
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDate
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+
+data class NotificationMonitoringSummary(
+    val anyAlertEnabled: Boolean = true,
+    val favoritesOnly: Boolean = true,
+    val activeCircuitCount: Int = 0,
+    val monitoredCircuitCount: Int = 0,
+    val excludedNonFavoriteCount: Int = 0,
+    val hasPrimaryHome: Boolean = false,
+    val favoriteCount: Int = 0
+)
+
+data class PlannedAlarm(
+    val triggerAtMillis: Long,
+    val transitionAtMillis: Long,
+    val circuitCode: String,
+    val targetState: ScheduledState,
+    val priorityTier: Int,
+    val notificationId: Int,
+    val title: String,
+    val body: String
+)
+
+data class NotificationScheduleResult(
+    val scheduledAlarms: List<PlannedAlarm>,
+    val totalCandidatesCount: Int,
+    val droppedByCapCount: Int,
+    val maintenanceWorkerActive: Boolean,
+    val summary: NotificationMonitoringSummary
+)
 
 object ScheduleNotificationManager {
 
@@ -34,7 +70,33 @@ object ScheduleNotificationManager {
     const val EXTRA_CIRCUIT_CODE = "extra_circuit_code"
     const val EXTRA_NOTIF_ID = "extra_notif_id"
 
-    private const val MAX_SCHEDULED_ALARMS = 24
+    const val MAX_SCHEDULED_ALARMS = 24
+    const val PLANNING_HORIZON_DAYS = 7L
+    const val NEAR_TERM_WINDOW_HOURS = 48L
+
+    private const val ALARM_REQUEST_CODE_BASE = 1000
+    private const val NOTIF_ID_BASE = 2000
+    private const val NOTIF_ID_SPAN = 100_000
+
+    private val rescheduleMutex = Mutex()
+
+    @Volatile
+    private var testHooksOverride: Pair<LuzIslaRepository, UserPreferencesRepository>? = null
+
+    @Volatile
+    @VisibleForTesting
+    internal var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+
+    @VisibleForTesting
+    fun setTestHooks(repository: LuzIslaRepository, prefsRepo: UserPreferencesRepository) {
+        testHooksOverride = repository to prefsRepo
+    }
+
+    @VisibleForTesting
+    fun resetTestHooks() {
+        testHooksOverride = null
+        ioDispatcher = Dispatchers.IO
+    }
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -69,24 +131,108 @@ object ScheduleNotificationManager {
         }
     }
 
-    suspend fun rescheduleUpcomingNotifications(context: Context) = withContext(Dispatchers.IO) {
-        ensureChannels(context)
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        cancelExistingAlarms(context, alarmManager)
+    fun summarizeMonitoringScope(
+        snapshot: ScheduleSnapshot,
+        prefs: UserPreferences
+    ): NotificationMonitoringSummary {
+        val activeCircuits = snapshot.circuits.filter { it.isActive }
+        val hasPrimaryHome = activeCircuits.any { it.isPrimaryHome }
+        val favoriteCount = activeCircuits.count { it.isFavorite || it.isPrimaryHome }
+        val monitored = activeCircuits.filter { c ->
+            !prefs.notifyFavoritesOnly || c.isFavorite || c.isPrimaryHome
+        }
+        val anyAlertEnabled = prefs.notifyServiceStart || prefs.notifyServiceEnd || prefs.notifyNextRestore
+        return NotificationMonitoringSummary(
+            anyAlertEnabled = anyAlertEnabled,
+            favoritesOnly = prefs.notifyFavoritesOnly,
+            activeCircuitCount = activeCircuits.size,
+            monitoredCircuitCount = monitored.size,
+            excludedNonFavoriteCount = (activeCircuits.size - monitored.size).coerceAtLeast(0),
+            hasPrimaryHome = hasPrimaryHome,
+            favoriteCount = favoriteCount
+        )
+    }
 
-        val db = AppDatabase.getInstance(context)
-        val prefsRepo = UserPreferencesRepository(context)
-        val repo = LuzIslaRepository(db, prefsRepo)
-        val prefs = prefsRepo.getSnapshot()
+    suspend fun rescheduleUpcomingNotifications(
+        context: Context,
+        nowMillis: Long = System.currentTimeMillis(),
+        repositoryOverride: LuzIslaRepository? = null,
+        prefsRepoOverride: UserPreferencesRepository? = null
+    ): NotificationScheduleResult = withContext(ioDispatcher) {
+        rescheduleMutex.withLock {
+            ensureChannels(context)
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
+            val hooks = testHooksOverride
+            val prefsRepo = prefsRepoOverride ?: hooks?.second ?: UserPreferencesRepository(context)
+            val repo = repositoryOverride ?: hooks?.first ?: LuzIslaRepository(
+                AppDatabase.getInstance(context),
+                prefsRepo
+            )
+
+            val prefs = prefsRepo.getSnapshot()
+            val snapshot = repo.getCurrentSnapshot()
+            val summary = summarizeMonitoringScope(snapshot, prefs)
+
+            cancelExistingAlarms(context, alarmManager)
+
+            if (!summary.anyAlertEnabled) {
+                NotificationMaintenanceWorker.schedule(context, enabled = false)
+                return@withLock NotificationScheduleResult(
+                    scheduledAlarms = emptyList(),
+                    totalCandidatesCount = 0,
+                    droppedByCapCount = 0,
+                    maintenanceWorkerActive = false,
+                    summary = summary
+                )
+            }
+
+            val maintenanceActive = NotificationMaintenanceWorker.schedule(context, enabled = true)
+            val plan = buildNotificationPlan(snapshot, prefs, nowMillis)
+
+            plan.selectedAlarms.forEachIndexed { index, alarm ->
+                val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
+                    putExtra(EXTRA_TITLE, alarm.title)
+                    putExtra(EXTRA_BODY, alarm.body)
+                    putExtra(EXTRA_CIRCUIT_CODE, alarm.circuitCode)
+                    putExtra(EXTRA_NOTIF_ID, alarm.notificationId)
+                }
+                val pi = PendingIntent.getBroadcast(
+                    context,
+                    ALARM_REQUEST_CODE_BASE + index,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                // Battery-friendly inexact wakeup alarm: avoids SCHEDULE_EXACT_ALARM special permissions.
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, alarm.triggerAtMillis, pi)
+            }
+
+            NotificationScheduleResult(
+                scheduledAlarms = plan.selectedAlarms,
+                totalCandidatesCount = plan.totalCandidatesCount,
+                droppedByCapCount = (plan.totalCandidatesCount - plan.selectedAlarms.size).coerceAtLeast(0),
+                maintenanceWorkerActive = maintenanceActive,
+                summary = summary
+            )
+        }
+    }
+
+    internal data class NotificationPlan(
+        val selectedAlarms: List<PlannedAlarm>,
+        val totalCandidatesCount: Int
+    )
+
+    internal fun buildNotificationPlan(
+        snapshot: ScheduleSnapshot,
+        prefs: UserPreferences,
+        nowMillis: Long
+    ): NotificationPlan {
         if (!prefs.notifyServiceStart && !prefs.notifyServiceEnd && !prefs.notifyNextRestore) {
-            return@withContext
+            return NotificationPlan(emptyList(), 0)
         }
 
-        val snapshot = repo.getCurrentSnapshot()
         val zoneId = ScheduleEngine.effectiveZone(prefs.useSystemTimezone, prefs.manualTimezoneId)
         val use24h = prefs.use24HourFormat
-        val nowMillis = System.currentTimeMillis()
         val leadMinutes = prefs.notifyLeadMinutes.coerceIn(0, 60)
         val leadMillis = leadMinutes * 60_000L
         val leadPhrase = when (leadMinutes) {
@@ -94,79 +240,172 @@ object ScheduleNotificationManager {
             60 -> "en 1 hora"
             else -> "en $leadMinutes min"
         }
-        val horizonMillis = nowMillis + 24 * 60 * 60_000L
-        val today = LocalDate.now(zoneId)
+
+        val horizonMillis = nowMillis + TimeUnit.DAYS.toMillis(PLANNING_HORIZON_DAYS)
+        val nearTermCutoffMillis = nowMillis + TimeUnit.HOURS.toMillis(NEAR_TERM_WINDOW_HOURS)
+        val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+        val rangeStartMillis = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val rangeEndMillis = today.plusDays(PLANNING_HORIZON_DAYS + 2L)
+            .atStartOfDay(zoneId)
+            .toInstant()
+            .toEpochMilli()
 
         val targetCircuits = snapshot.circuits.filter { c ->
             c.isActive && (!prefs.notifyFavoritesOnly || c.isFavorite || c.isPrimaryHome)
         }
 
-        data class PlannedAlarm(
-            val triggerAtMillis: Long,
+        data class TransitionKey(
             val circuitCode: String,
-            val title: String,
-            val body: String
+            val transitionAtMillis: Long,
+            val targetState: ScheduledState
         )
 
-        val alarms = mutableListOf<PlannedAlarm>()
-        for (circuit in targetCircuits) {
-            val todaySegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today, zoneId)
-            val tomorrowSegs = ScheduleEngine.getTimelineForDay(circuit.code, snapshot, today.plusDays(1), zoneId)
-            val combined = todaySegs + tomorrowSegs
+        val seenKeys = HashSet<TransitionKey>()
+        val usedNotifIds = HashSet<Int>()
+        val candidates = mutableListOf<PlannedAlarm>()
 
-            for (i in 1 until combined.size) {
-                val prev = combined[i - 1]
-                val curr = combined[i]
+        for (circuit in targetCircuits) {
+            val normalizedCode = circuit.code.trim().uppercase()
+            val priorityTier = when {
+                circuit.isPrimaryHome -> 0
+                circuit.isFavorite -> 1
+                else -> 2
+            }
+
+            val timeline = ScheduleEngine.getTimelineForRange(
+                circuitCode = circuit.code,
+                snapshot = snapshot,
+                rangeStartMillis = rangeStartMillis,
+                rangeEndMillis = rangeEndMillis,
+                zoneId = zoneId
+            )
+
+            for (i in 1 until timeline.size) {
+                val prev = timeline[i - 1]
+                val curr = timeline[i]
                 if (prev.state == curr.state) continue
+
                 val transitionMillis = curr.startMillis
                 val triggerAt = transitionMillis - leadMillis
                 if (triggerAt <= nowMillis || triggerAt > horizonMillis) continue
 
+                val key = TransitionKey(normalizedCode, transitionMillis, curr.state)
+                if (!seenKeys.add(key)) continue
+
                 val timeStr = ScheduleEngine.formatTime(transitionMillis, use24h, zoneId)
-                when (curr.state) {
+                val endTimeStr = ScheduleEngine.formatTime(curr.endMillis, use24h, zoneId)
+
+                val content: Pair<String, String>? = when (curr.state) {
                     ScheduledState.SERVICE_SCHEDULED -> {
                         if (prefs.notifyServiceStart || prefs.notifyNextRestore) {
-                            val verb = if (prev.state == ScheduledState.OUTAGE_SCHEDULED) "Restablecimiento" else "Inicio de servicio"
-                            alarms += PlannedAlarm(
-                                triggerAtMillis = triggerAt,
-                                circuitCode = circuit.code,
-                                title = "${circuit.displayTitle()}: $verb $leadPhrase",
-                                body = "Servicio programado a partir de las $timeStr (hasta ${ScheduleEngine.formatTime(curr.endMillis, use24h, zoneId)})."
-                            )
+                            val verb = if (prev.state == ScheduledState.OUTAGE_SCHEDULED) {
+                                "Restablecimiento"
+                            } else {
+                                "Inicio de servicio"
+                            }
+                            "${circuit.displayTitle()}: $verb $leadPhrase" to
+                                "Servicio programado a partir de las $timeStr (hasta $endTimeStr)."
+                        } else {
+                            null
                         }
                     }
                     ScheduledState.OUTAGE_SCHEDULED -> {
                         if (prefs.notifyServiceEnd) {
-                            alarms += PlannedAlarm(
-                                triggerAtMillis = triggerAt,
-                                circuitCode = circuit.code,
-                                title = "${circuit.displayTitle()}: Fin de servicio $leadPhrase",
-                                body = "Interrupción programada a partir de las $timeStr."
-                            )
+                            "${circuit.displayTitle()}: Fin de servicio $leadPhrase" to
+                                "Interrupción programada a partir de las $timeStr."
+                        } else {
+                            null
                         }
                     }
-                    ScheduledState.UNKNOWN -> Unit
+                    ScheduledState.UNKNOWN -> null
+                }
+
+                if (content != null) {
+                    val notifId = allocateDeterministicNotifId(
+                        circuitCode = normalizedCode,
+                        transitionMillis = transitionMillis,
+                        targetState = curr.state,
+                        usedNotifIds = usedNotifIds
+                    )
+                    candidates += PlannedAlarm(
+                        triggerAtMillis = triggerAt,
+                        transitionAtMillis = transitionMillis,
+                        circuitCode = circuit.code,
+                        targetState = curr.state,
+                        priorityTier = priorityTier,
+                        notificationId = notifId,
+                        title = content.first,
+                        body = content.second
+                    )
                 }
             }
         }
 
-        alarms.sortedBy { it.triggerAtMillis }
-            .take(MAX_SCHEDULED_ALARMS)
-            .forEachIndexed { index, alarm ->
-                val intent = Intent(context, ScheduleNotificationReceiver::class.java).apply {
-                    putExtra(EXTRA_TITLE, alarm.title)
-                    putExtra(EXTRA_BODY, alarm.body)
-                    putExtra(EXTRA_CIRCUIT_CODE, alarm.circuitCode)
-                    putExtra(EXTRA_NOTIF_ID, 2000 + index)
-                }
-                val pi = PendingIntent.getBroadcast(
-                    context,
-                    1000 + index,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, alarm.triggerAtMillis, pi)
-            }
+        val prioritizedSelection = selectPrioritizedAlarms(
+            candidates = candidates,
+            nearTermCutoffMillis = nearTermCutoffMillis,
+            limit = MAX_SCHEDULED_ALARMS
+        )
+
+        return NotificationPlan(
+            selectedAlarms = prioritizedSelection,
+            totalCandidatesCount = candidates.size
+        )
+    }
+
+    private fun allocateDeterministicNotifId(
+        circuitCode: String,
+        transitionMillis: Long,
+        targetState: ScheduledState,
+        usedNotifIds: MutableSet<Int>
+    ): Int {
+        val rawHash = ((circuitCode.hashCode() * 31) + (transitionMillis / 60_000L).toInt()) * 31 + targetState.ordinal
+        var offset = abs(rawHash) % NOTIF_ID_SPAN
+        var candidate = NOTIF_ID_BASE + offset
+        while (!usedNotifIds.add(candidate)) {
+            offset = (offset + 1) % NOTIF_ID_SPAN
+            candidate = NOTIF_ID_BASE + offset
+        }
+        return candidate
+    }
+
+    private fun selectPrioritizedAlarms(
+        candidates: List<PlannedAlarm>,
+        nearTermCutoffMillis: Long,
+        limit: Int
+    ): List<PlannedAlarm> {
+        if (candidates.size <= limit) {
+            return candidates.sortedWith(
+                compareBy<PlannedAlarm> { it.triggerAtMillis }
+                    .thenBy { it.priorityTier }
+                    .thenBy { it.circuitCode }
+            )
+        }
+
+        val priorityComparator = compareBy<PlannedAlarm> { it.priorityTier }
+            .thenBy { it.triggerAtMillis }
+            .thenBy { it.circuitCode }
+
+        val nearTerm = candidates
+            .filter { it.triggerAtMillis <= nearTermCutoffMillis }
+            .sortedWith(priorityComparator)
+            .take(limit)
+
+        val selected = if (nearTerm.size < limit) {
+            val extended = candidates
+                .filter { it.triggerAtMillis > nearTermCutoffMillis }
+                .sortedWith(priorityComparator)
+                .take(limit - nearTerm.size)
+            nearTerm + extended
+        } else {
+            nearTerm
+        }
+
+        return selected.sortedWith(
+            compareBy<PlannedAlarm> { it.triggerAtMillis }
+                .thenBy { it.priorityTier }
+                .thenBy { it.circuitCode }
+        )
     }
 
     private fun cancelExistingAlarms(context: Context, alarmManager: AlarmManager) {
@@ -174,7 +413,7 @@ object ScheduleNotificationManager {
             val intent = Intent(context, ScheduleNotificationReceiver::class.java)
             val pi = PendingIntent.getBroadcast(
                 context,
-                1000 + index,
+                ALARM_REQUEST_CODE_BASE + index,
                 intent,
                 PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
             )

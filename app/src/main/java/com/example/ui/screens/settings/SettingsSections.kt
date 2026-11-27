@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.History
@@ -67,7 +70,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +90,7 @@ import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.UpdateChannelStatus
 import com.example.ui.components.IslaEmblemBadge
+import com.example.ui.theme.LocalElectricStatusColors
 import java.time.Instant
 import java.time.ZoneId
 
@@ -235,6 +244,7 @@ fun TimezoneAndFormatSection(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             modifier = Modifier
                 .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp)
                 .testTag("settings_tz_picker_button")
         ) {
             Icon(Icons.Filled.Language, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -298,7 +308,9 @@ fun AppearanceSection(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.Top,
@@ -500,53 +512,55 @@ fun AppearanceSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onOpenDayNightDialog,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("settings_day_night_config_button")
-                        ) {
-                            Text(
-                                text = "Configurar",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Button(
-                            onClick = onSyncSolarNow,
-                            enabled = !state.isSolarSyncing,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("settings_solar_sync_now_button")
-                        ) {
-                            if (state.isSolarSyncing) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                    ResponsiveButtonPair(
+                        first = { modifier ->
+                            OutlinedButton(
+                                onClick = onOpenDayNightDialog,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                modifier = modifier
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("settings_day_night_config_button")
+                            ) {
+                                Text(
+                                    text = "Configurar",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = "Sincronizar",
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        },
+                        second = { modifier ->
+                            Button(
+                                onClick = onSyncSolarNow,
+                                enabled = !state.isSolarSyncing,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                modifier = modifier
+                                    .defaultMinSize(minHeight = 48.dp)
+                                    .testTag("settings_solar_sync_now_button")
+                            ) {
+                                if (state.isSolarSyncing) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "Sincronizar",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
-                    }
+                    )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .clip(MaterialTheme.shapes.small)
                             .clickable(onClick = onOpenSolarAttribution)
-                            .padding(vertical = 2.dp)
+                            .padding(horizontal = 4.dp, vertical = 10.dp)
                             .testTag("settings_solar_attribution_link")
                     ) {
                         Icon(
@@ -608,6 +622,7 @@ fun AppearanceSection(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
                     .testTag("settings_replay_onboarding_button")
             ) {
                 Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -615,7 +630,6 @@ fun AppearanceSection(
                 Text(
                     text = "Repetir asistente inicial",
                     maxLines = 1,
-                    softWrap = false,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -652,7 +666,9 @@ fun DataAndSyncSection(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
             ) {
                 Text(
                     text = "Comprobar todo al abrir la app",
@@ -673,7 +689,7 @@ fun DataAndSyncSection(
             ) {
                 Column(
                     modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     UnifiedStatusRow("Configuración JSON", p.lastUnifiedJsonStatus)
                     UnifiedStatusRow("Horarios solares", p.lastUnifiedSolarStatus)
@@ -694,6 +710,7 @@ fun DataAndSyncSection(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
                     .testTag("settings_check_all_now_button")
             ) {
                 if (state.isCheckingUnified) {
@@ -705,7 +722,6 @@ fun DataAndSyncSection(
                 Text(
                     text = if (state.isCheckingUnified) "Comprobando todo…" else "Comprobar todo ahora",
                     maxLines = 1,
-                    softWrap = false,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -725,12 +741,14 @@ fun DataAndSyncSection(
             if (syncUrlInput.trim() != com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) {
                 OutlinedButton(
                     onClick = { onSyncUrlChange(com.example.sync.HttpsSyncManager.DEFAULT_GITHUB_SYNC_URL) },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                    modifier = Modifier.testTag("sync_reset_default_url_button")
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .defaultMinSize(minHeight = 48.dp)
+                        .testTag("sync_reset_default_url_button")
                 ) {
                     Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Usar URL GitHub predeterminada", maxLines = 1, softWrap = false)
+                    Text("Usar URL GitHub predeterminada", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
 
@@ -800,44 +818,43 @@ fun DataAndSyncSection(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onSaveSyncSettings,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(
-                        text = "Guardar URL",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Button(
-                    onClick = onTriggerManualSync,
-                    enabled = !state.isSyncing,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("sync_now_button")
-                ) {
-                    if (state.isSyncing) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+            ResponsiveButtonPair(
+                first = { modifier ->
+                    OutlinedButton(
+                        onClick = onSaveSyncSettings,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = modifier.defaultMinSize(minHeight = 48.dp)
+                    ) {
+                        Text(
+                            text = "Guardar URL",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "Sincronizar",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                },
+                second = { modifier ->
+                    Button(
+                        onClick = onTriggerManualSync,
+                        enabled = !state.isSyncing,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("sync_now_button")
+                    ) {
+                        if (state.isSyncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Sincronizar",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
+            )
 
             val lastSyncStr = if (p.lastSyncEpochMillis > 0L) {
                 val remoteVerLabel = AppVersionConfig.formatConfigVersionDisplay(
@@ -868,6 +885,7 @@ fun DataAndSyncSection(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
                     .testTag("export_generate_button")
             ) {
                 Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -875,7 +893,6 @@ fun DataAndSyncSection(
                 Text(
                     text = "Exportar código o JSON",
                     maxLines = 1,
-                    softWrap = false,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -890,57 +907,57 @@ fun DataAndSyncSection(
                     .testTag("import_code_input")
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onInspectCode,
-                    enabled = pasteCodeInput.isNotBlank(),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("import_code_button")
-                ) {
-                    Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Validar código",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            ResponsiveButtonPair(
+                first = { modifier ->
+                    Button(
+                        onClick = onInspectCode,
+                        enabled = pasteCodeInput.isNotBlank(),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                        modifier = modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("import_code_button")
+                    ) {
+                        Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Validar código",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
+                second = { modifier ->
+                    OutlinedButton(
+                        onClick = onOpenJsonImport,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                        modifier = modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("import_json_button")
+                    ) {
+                        Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Importar JSON",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                OutlinedButton(
-                    onClick = onOpenJsonImport,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("import_json_button")
-                ) {
-                    Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Importar JSON",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            )
 
             if (state.hasBackup) {
                 OutlinedButton(
                     onClick = onRestoreBackup,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
                 ) {
                     Icon(Icons.Filled.History, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Restaurar respaldo anterior",
                         maxLines = 1,
-                        softWrap = false,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -1053,6 +1070,76 @@ fun NotificationsAndAppSection(
                             )
                         }
                     }
+                }
+            }
+
+            val summary = state.notificationSummary
+            val isMissingFavScope = summary.anyAlertEnabled && summary.favoritesOnly && summary.monitoredCircuitCount == 0
+            val scopeBg = if (isMissingFavScope) {
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            }
+            val scopeFg = if (isMissingFavScope) {
+                MaterialTheme.colorScheme.onErrorContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = scopeBg,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (isMissingFavScope) {
+                        MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("settings_notification_scope_card")
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(12.dp)
+                ) {
+                    val scopeMessage = when {
+                        !summary.anyAlertEnabled ->
+                            "Los avisos de horario están desactivados. Activa inicio, fin o restablecimiento para programar recordatorios."
+                        summary.favoritesOnly && summary.monitoredCircuitCount == 0 ->
+                            "No tienes Mi vivienda ni circuitos favoritos activos: no recibirás avisos hasta marcar uno o desactivar \"Solo para mis circuitos favoritos\"."
+                        summary.favoritesOnly ->
+                            "Monitoreando ${summary.monitoredCircuitCount} circuito(s) (Mi vivienda y Favoritos). Se omiten ${summary.excludedNonFavoriteCount} circuito(s) no favoritos."
+                        else ->
+                            "Monitoreando ${summary.monitoredCircuitCount} circuito(s) activos. Límite de ${ScheduleNotificationManager.MAX_SCHEDULED_ALARMS} alarmas en cola con prioridad para Mi vivienda y Favoritos, más reposición automática."
+                    }
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = scopeFg,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(16.dp)
+                        )
+                        Text(
+                            text = scopeMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scopeFg,
+                            softWrap = true
+                        )
+                    }
+                    Text(
+                        text = "Precisión aproximada (ahorro de batería): las alertas usan alarmas optimizadas sin pedir permisos de alarma exacta, por lo que Android puede retrasarlas unos minutos en modo reposo.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scopeFg.copy(alpha = 0.9f),
+                        softWrap = true,
+                        modifier = Modifier.testTag("settings_notification_battery_note")
+                    )
                 }
             }
         }
@@ -1168,54 +1255,52 @@ fun NotificationsAndAppSection(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onCheckUpdatesNow,
-                    enabled = !state.isCheckingUpdates,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("settings_check_updates_button")
-                ) {
-                    if (state.isCheckingUpdates) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+            ResponsiveButtonPair(
+                first = { modifier ->
+                    OutlinedButton(
+                        onClick = onCheckUpdatesNow,
+                        enabled = !state.isCheckingUpdates,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("settings_check_updates_button")
+                    ) {
+                        if (state.isCheckingUpdates) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (state.isCheckingUpdates) "Buscando…" else "Comprobar",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = if (state.isCheckingUpdates) "Buscando…" else "Comprobar",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                },
+                second = { modifier ->
+                    val targetDownloadUrl = if (state.updateAvailable && p.latestKnownDownloadUrl.isNotBlank()) {
+                        p.latestKnownDownloadUrl
+                    } else {
+                        p.latestKnownReleasePageUrl.ifBlank { AppUpdateService.GITHUB_RELEASES_URL }
+                    }
+                    Button(
+                        onClick = { onOpenExternalUrl(targetDownloadUrl) },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .testTag("settings_download_update_button")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = if (state.updateAvailable) "Actualizar" else "Ver Releases",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-
-                val targetDownloadUrl = if (state.updateAvailable && p.latestKnownDownloadUrl.isNotBlank()) {
-                    p.latestKnownDownloadUrl
-                } else {
-                    p.latestKnownReleasePageUrl.ifBlank { AppUpdateService.GITHUB_RELEASES_URL }
-                }
-                Button(
-                    onClick = { onOpenExternalUrl(targetDownloadUrl) },
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("settings_download_update_button")
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = if (state.updateAvailable) "Actualizar" else "Ver Releases",
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
+            )
 
             Text(
                 text = "Canales de descarga",
@@ -1232,6 +1317,8 @@ fun NotificationsAndAppSection(
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .then(
                                 if (isActive) {
                                     Modifier.clickable { onOpenExternalUrl(channelUrl) }
@@ -1286,8 +1373,9 @@ fun NotificationsAndAppSection(
         }
 
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -1300,7 +1388,8 @@ fun NotificationsAndAppSection(
                     Text(
                         text = "Acerca de · Luz Isla",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.semantics { heading() }
                     )
                     Text(
                         text = "Versión v${AppVersionConfig.APP_VERSION_NAME} (Compilación ${AppVersionConfig.APP_VERSION_CODE}) • Config. v${p.activeConfigVersionName}",
@@ -1319,10 +1408,47 @@ fun NotificationsAndAppSection(
 }
 
 @Composable
+private fun ResponsiveButtonPair(
+    first: @Composable (Modifier) -> Unit,
+    second: @Composable (Modifier) -> Unit
+) {
+    val fontScale = LocalDensity.current.fontScale
+    if (fontScale >= 1.25f) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            first(Modifier.fillMaxWidth())
+            second(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            first(Modifier.weight(1f))
+            second(Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
 private fun UnifiedStatusRow(title: String, status: String) {
+    val statusColors = LocalElectricStatusColors.current
+    val lower = status.lowercase()
+    val (icon, tint) = when {
+        "error" in lower || "fallo" in lower || "rechaz" in lower || "no se pudo" in lower || "sin conexión" in lower ->
+            Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
+        "pendiente" in lower || "sin comprobar" in lower || "desactivad" in lower || "omitid" in lower ->
+            Icons.Filled.Schedule to MaterialTheme.colorScheme.onSurfaceVariant
+        else ->
+            Icons.Filled.CheckCircle to statusColors.onServiceContainer
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {}
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1330,10 +1456,10 @@ private fun UnifiedStatusRow(title: String, status: String) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
-                Icons.Filled.CheckCircle,
+                imageVector = icon,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(14.dp)
+                tint = tint,
+                modifier = Modifier.size(16.dp)
             )
             Text(
                 text = title,
@@ -1347,7 +1473,7 @@ private fun UnifiedStatusRow(title: String, status: String) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             softWrap = true,
-            modifier = Modifier.padding(start = 20.dp)
+            modifier = Modifier.padding(start = 22.dp)
         )
     }
 }
@@ -1358,16 +1484,21 @@ private fun SettingsSectionCard(
     content: @Composable () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { heading() }
+            )
             content()
         }
     }
@@ -1378,9 +1509,19 @@ private fun SettingSwitchRow(label: String, checked: Boolean, onCheckedChange: (
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .clip(MaterialTheme.shapes.small)
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Switch
+            )
+            .padding(vertical = 4.dp)
     ) {
         Text(text = label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Spacer(modifier = Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = null)
     }
 }

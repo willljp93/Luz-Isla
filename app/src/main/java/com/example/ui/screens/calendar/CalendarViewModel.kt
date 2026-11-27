@@ -52,6 +52,7 @@ data class GroupTimelineRow(
 )
 
 data class CalendarUiState(
+    val isLoading: Boolean = true,
     val selectedDate: LocalDate = LocalDate.now(ScheduleEngine.HAVANA_ZONE),
     val nowMillis: Long = System.currentTimeMillis(),
     val windowStartMillis: Long? = null,
@@ -210,6 +211,7 @@ class CalendarViewModel(
         val hasData = circuitRows.any { row -> row.segments.any { it.state != ScheduledState.UNKNOWN } }
 
         CalendarUiState(
+            isLoading = false,
             selectedDate = date,
             nowMillis = nowMillis,
             windowStartMillis = windowStart,

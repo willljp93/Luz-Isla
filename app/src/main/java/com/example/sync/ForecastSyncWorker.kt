@@ -12,7 +12,6 @@ import com.example.data.local.AppDatabase
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.repository.LuzIslaRepository
 import com.example.notifications.ScheduleNotificationManager
-import com.example.widget.WidgetUpdateHelper
 import java.util.concurrent.TimeUnit
 
 class ForecastSyncWorker(
@@ -30,7 +29,7 @@ class ForecastSyncWorker(
             return Result.success()
         }
 
-        val syncManager = HttpsSyncManager(repository, prefsRepo)
+        val syncManager = HttpsSyncManager(repository, prefsRepo, appContext = applicationContext)
         return when (val outcome = syncManager.syncFromUrl(prefs.syncUrl, forceApply = false)) {
             is SyncOutcome.Updated -> {
                 if (prefs.notifyNewForecast) {
@@ -40,12 +39,19 @@ class ForecastSyncWorker(
                         circuitCount = outcome.circuitCount
                     )
                 }
-                ScheduleNotificationManager.rescheduleUpcomingNotifications(applicationContext)
-                WidgetUpdateHelper.refreshAllWidgets(applicationContext)
                 Result.success()
             }
             is SyncOutcome.UpToDate -> Result.success()
-            is SyncOutcome.Failure -> Result.retry()
+            is SyncOutcome.Failure -> when (outcome.errorType) {
+                SyncErrorType.NETWORK_ERROR,
+                SyncErrorType.HTTP_ERROR -> Result.retry()
+                SyncErrorType.INSECURE_URL,
+                SyncErrorType.FILE_TOO_LARGE,
+                SyncErrorType.MALFORMED_JSON,
+                SyncErrorType.INCOMPATIBLE_SCHEMA,
+                SyncErrorType.HASH_MISMATCH,
+                SyncErrorType.INCOMPATIBLE_CONFIG -> Result.failure()
+            }
         }
     }
 

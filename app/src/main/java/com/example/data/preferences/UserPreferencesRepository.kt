@@ -577,6 +577,20 @@ class UserPreferencesRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    suspend fun removeWidgetsForCircuit(circuitCode: String) {
+        val normalized = circuitCode.trim().uppercase()
+        if (normalized.isEmpty()) return
+        dataStore.edit { prefs ->
+            val current = prefs[Keys.WIDGET_CIRCUIT_MAP]?.let { raw ->
+                runCatching { json.decodeFromString<Map<Int, String>>(raw) }.getOrDefault(emptyMap())
+            } ?: emptyMap()
+            val updated = current.filterValues { !it.trim().equals(normalized, ignoreCase = true) }
+            if (updated.size != current.size) {
+                prefs[Keys.WIDGET_CIRCUIT_MAP] = json.encodeToString(updated)
+            }
+        }
+    }
+
     companion object {
         fun normalizeSyncInterval(hours: Int): Int = when (hours) {
             1 -> 1

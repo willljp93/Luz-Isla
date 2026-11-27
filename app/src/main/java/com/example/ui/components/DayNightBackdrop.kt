@@ -374,9 +374,14 @@ fun DayNightChip(
     sunriseMinutes: Int,
     sunsetMinutes: Int,
     use24h: Boolean,
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val hourBucket = remember(nowMillis / 60_000L, zoneId) {
         Instant.ofEpochMilli(nowMillis).atZone(zoneId).hour
     }
@@ -413,18 +418,18 @@ fun DayNightChip(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = palette.phaseLabel,
                 tint = tint,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(15.dp)
             )
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "${palette.phaseLabel} • $nextBoundary",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

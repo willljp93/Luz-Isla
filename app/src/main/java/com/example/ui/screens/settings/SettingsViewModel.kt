@@ -18,6 +18,7 @@ import com.example.domain.model.ScheduledState
 import com.example.domain.model.ThemeMode
 import com.example.domain.model.WidgetCardStyle
 import com.example.domain.version.AppVersionConfig
+import com.example.notifications.NotificationMonitoringSummary
 import com.example.notifications.ScheduleNotificationManager
 import com.example.sync.AppUpdateService
 import com.example.sync.DistributionChannel
@@ -30,8 +31,10 @@ import com.example.sync.SyncOutcome
 import com.example.sync.UnifiedSyncCoordinator
 import com.example.sync.UpdateCheckResult
 import com.example.transfer.ConfigCodec
+import com.example.transfer.ConfigCodecException
 import com.example.transfer.DecodedConfigResult
 import com.example.transfer.ImportSummary
+import com.example.transfer.Sha256Status
 import com.example.widget.LauncherIconManager
 import com.example.widget.WidgetUpdateHelper
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +60,11 @@ data class PendingImportReview(
     val summary: ImportSummary
 )
 
+data class PendingModifiedImportWarning(
+    val rawJson: String,
+    val errorMessage: String
+)
+
 data class SettingsUiState(
     val prefs: UserPreferences = UserPreferences(),
     val isSyncing: Boolean = false,
@@ -69,8 +77,10 @@ data class SettingsUiState(
     val hasPrimaryHome: Boolean = false,
     val primaryHomeState: ScheduledState? = null,
     val primaryHomeLabel: String = "",
+    val notificationSummary: NotificationMonitoringSummary = NotificationMonitoringSummary(),
     val exportBundle: ExportBundle? = null,
     val pendingImport: PendingImportReview? = null,
+    val pendingModifiedImportWarning: PendingModifiedImportWarning? = null,
     val feedbackMessage: String? = null
 )
 
@@ -93,9 +103,10 @@ class SettingsViewModel(
     private val isCheckingUnified = MutableStateFlow(false)
     private val exportBundle = MutableStateFlow<ExportBundle?>(null)
     private val pendingImport = MutableStateFlow<PendingImportReview?>(null)
+    private val pendingModifiedImportWarning = MutableStateFlow<PendingModifiedImportWarning?>(null)
     private val feedbackMessage = MutableStateFlow<String?>(null)
 
-    private val syncManager = HttpsSyncManager(repository, prefsRepo)
+    private val syncManager = HttpsSyncManager(repository, prefsRepo, appContext = appContext)
     private val solarSyncService = SunriseSunsetService(prefsRepo)
     private val appUpdateService = AppUpdateService(prefsRepo)
     private val unifiedSyncCoordinator = UnifiedSyncCoordinator(appContext, repository, prefsRepo)
@@ -117,13 +128,20 @@ class SettingsViewModel(
         SettingsSyncFlags(urlSync, solarSync, updateCheck, unifiedCheck)
     }
 
+    private val importFlow = combine(
+        pendingImport,
+        pendingModifiedImportWarning
+    ) { review, modifiedWarning ->
+        review to modifiedWarning
+    }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         prefsAndBackupsFlow,
         syncingStateFlow,
         exportBundle,
-        pendingImport,
+        importFlow,
         feedbackMessage
-    ) { base, syncFlags, export, pending, msg ->
+    ) { base, syncFlags, export, importState, msg ->
         val prefs = base.first
         val hasBackup = base.second
         val snapshot: ScheduleSnapshot = base.third
@@ -153,8 +171,10 @@ class SettingsViewModel(
             hasPrimaryHome = primaryCircuit != null,
             primaryHomeState = primaryEval?.state,
             primaryHomeLabel = primaryCircuit?.displayTitle().orEmpty(),
+            notificationSummary = ScheduleNotificationManager.summarizeMonitoringScope(snapshot, prefs),
             exportBundle = export,
-            pendingImport = pending,
+            pendingImport = importState.first,
+            pendingModifiedImportWarning = importState.second,
             feedbackMessage = msg
         )
     }.stateIn(
@@ -202,6 +222,7 @@ class SettingsViewModel(
     fun setUse24HourFormat(use24h: Boolean) {
         viewModelScope.launch {
             prefsRepo.setUse24HourFormat(use24h)
+            ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
             WidgetUpdateHelper.refreshAllWidgets(appContext)
         }
     }
@@ -387,8 +408,6 @@ class SettingsViewModel(
             isSyncing.value = false
             when (outcome) {
                 is SyncOutcome.Updated -> {
-                    ScheduleNotificationManager.rescheduleUpcomingNotifications(appContext)
-                    WidgetUpdateHelper.refreshAllWidgets(appContext)
                     val verLabel = outcome.versionName.ifBlank { outcome.version.toString() }
                     feedbackMessage.value = "Configuración actualizada (v$verLabel): ${outcome.circuitCount} circuitos."
                 }
@@ -470,20 +489,64 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val rawJson = withContext(Dispatchers.IO) {
-                    appContext.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                        ?: throw IllegalArgumentException("No se pudo abrir el archivo seleccionado.")
+                    appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                        val bytes = ConfigCodec.readBytesWithLimit(stream, ConfigCodec.MAX_CONFIG_BYTES)
+                        String(bytes, Charsets.UTF_8)
+                    } ?: throw IllegalArgumentException("No se pudo abrir el archivo seleccionado.")
                 }
-                val decoded = withContext(Dispatchers.Default) {
-                    ConfigCodec.decodeFromJson(rawJson)
-                }
-                pendingImport.value = PendingImportReview(
-                    decoded = decoded,
-                    summary = ConfigCodec.buildSummary(decoded)
-                )
+                inspectManualJsonText(rawJson)
             } catch (e: Exception) {
-                feedbackMessage.value = e.message ?: "Archivo JSON inválido."
+                feedbackMessage.value = e.message ?: "No se pudo leer el archivo JSON seleccionado."
             }
         }
+    }
+
+    suspend fun inspectManualJsonText(rawJson: String) {
+        try {
+            val decoded = withContext(Dispatchers.Default) {
+                ConfigCodec.decodeFromJson(rawJson, verifySha256 = true)
+            }
+            pendingModifiedImportWarning.value = null
+            pendingImport.value = PendingImportReview(
+                decoded = decoded,
+                summary = ConfigCodec.buildSummary(decoded)
+            )
+        } catch (mismatch: ConfigCodecException.HashMismatchException) {
+            pendingImport.value = null
+            pendingModifiedImportWarning.value = PendingModifiedImportWarning(
+                rawJson = rawJson,
+                errorMessage = mismatch.message
+                    ?: "El hash SHA-256 no coincide con el contenido del archivo."
+            )
+        } catch (e: Exception) {
+            feedbackMessage.value = e.message ?: "Archivo JSON inválido."
+        }
+    }
+
+    fun confirmInspectModifiedJson() {
+        viewModelScope.launch {
+            confirmInspectModifiedJsonNow()
+        }
+    }
+
+    suspend fun confirmInspectModifiedJsonNow() {
+        val warning = pendingModifiedImportWarning.value ?: return
+        pendingModifiedImportWarning.value = null
+        try {
+            val decoded = withContext(Dispatchers.Default) {
+                ConfigCodec.decodeFromJson(warning.rawJson, verifySha256 = false)
+            }
+            pendingImport.value = PendingImportReview(
+                decoded = decoded,
+                summary = ConfigCodec.buildSummary(decoded)
+            )
+        } catch (e: Exception) {
+            feedbackMessage.value = e.message ?: "No se pudo abrir el archivo modificado."
+        }
+    }
+
+    fun dismissModifiedJsonWarning() {
+        pendingModifiedImportWarning.value = null
     }
 
     fun writeExportJsonToUri(uri: Uri) {
@@ -527,10 +590,15 @@ class SettingsViewModel(
             val importedTs = ConfigCodec.parseGeneratedAtMillis(review.summary.generatedAtIso)
                 ?: System.currentTimeMillis()
             val importedVersionLabel = review.summary.displayVersion
+            val importSourceLabel = when (review.summary.sha256Status) {
+                Sha256Status.VERIFIED -> "Importado (${review.summary.sourceName})"
+                Sha256Status.MISSING -> "Importado sin SHA-256 (${review.summary.sourceName})"
+                Sha256Status.MISMATCH_IGNORED -> "Importado con hash omitido (${review.summary.sourceName})"
+            }
             prefsRepo.recordActiveConfigMetadata(
                 version = review.summary.configVersion,
                 timestampMillis = importedTs,
-                source = "Importado (${review.summary.sourceName})",
+                source = importSourceLabel,
                 versionName = importedVersionLabel
             )
 

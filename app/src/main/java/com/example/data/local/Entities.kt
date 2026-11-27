@@ -13,6 +13,17 @@ import com.example.domain.model.RelationType
 import com.example.domain.model.ScheduleGroup
 import com.example.domain.model.ScheduleType
 
+enum class RecordOrigin {
+    LOCAL,
+    REMOTE,
+    LEGACY;
+
+    companion object {
+        fun fromStored(raw: String?): RecordOrigin =
+            raw?.let { value -> runCatching { valueOf(value) }.getOrNull() } ?: LOCAL
+    }
+}
+
 @Entity(
     tableName = "circuits",
     indices = [Index(value = ["groupId"]), Index(value = ["displayOrder"])]
@@ -28,7 +39,8 @@ data class CircuitEntity(
     val isPrimaryHome: Boolean = false,
     val displayOrder: Int = 0,
     val createdAt: Long = 0L,
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): Circuit = Circuit(
         code = code,
@@ -45,7 +57,10 @@ data class CircuitEntity(
     )
 
     companion object {
-        fun fromDomain(model: Circuit): CircuitEntity = CircuitEntity(
+        fun fromDomain(
+            model: Circuit,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): CircuitEntity = CircuitEntity(
             code = model.code.trim().uppercase(),
             customName = model.customName,
             comment = model.comment,
@@ -56,7 +71,8 @@ data class CircuitEntity(
             isPrimaryHome = model.isPrimaryHome,
             displayOrder = model.displayOrder,
             createdAt = model.createdAt,
-            updatedAt = model.updatedAt
+            updatedAt = model.updatedAt,
+            dataOrigin = origin.name
         )
     }
 }
@@ -70,7 +86,8 @@ data class ScheduleGroupEntity(
     val outageDurationMinutes: Int = 720,
     val referenceEpochMillis: Long,
     val phaseOffsetMinutes: Int = 0,
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): ScheduleGroup = ScheduleGroup(
         id = id,
@@ -84,7 +101,10 @@ data class ScheduleGroupEntity(
     )
 
     companion object {
-        fun fromDomain(model: ScheduleGroup): ScheduleGroupEntity = ScheduleGroupEntity(
+        fun fromDomain(
+            model: ScheduleGroup,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): ScheduleGroupEntity = ScheduleGroupEntity(
             id = model.id,
             name = model.name,
             description = model.description,
@@ -92,7 +112,8 @@ data class ScheduleGroupEntity(
             outageDurationMinutes = model.outageDurationMinutes,
             referenceEpochMillis = model.referenceEpochMillis,
             phaseOffsetMinutes = model.phaseOffsetMinutes,
-            isActive = model.isActive
+            isActive = model.isActive,
+            dataOrigin = origin.name
         )
     }
 }
@@ -109,7 +130,8 @@ data class FixedScheduleRuleEntity(
     val endMinuteOfDay: Int,
     val validFromEpochDay: Long? = null,
     val validToEpochDay: Long? = null,
-    val label: String = ""
+    val label: String = "",
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): FixedScheduleRule = FixedScheduleRule(
         id = id,
@@ -123,7 +145,10 @@ data class FixedScheduleRuleEntity(
     )
 
     companion object {
-        fun fromDomain(model: FixedScheduleRule): FixedScheduleRuleEntity = FixedScheduleRuleEntity(
+        fun fromDomain(
+            model: FixedScheduleRule,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): FixedScheduleRuleEntity = FixedScheduleRuleEntity(
             id = model.id,
             circuitCode = model.circuitCode.trim().uppercase(),
             daysOfWeekMask = model.daysOfWeekMask,
@@ -131,7 +156,8 @@ data class FixedScheduleRuleEntity(
             endMinuteOfDay = model.endMinuteOfDay,
             validFromEpochDay = model.validFromEpochDay,
             validToEpochDay = model.validToEpochDay,
-            label = model.label
+            label = model.label,
+            dataOrigin = origin.name
         )
     }
 }
@@ -148,7 +174,8 @@ data class ExplicitForecastEntity(
     val circuitCodesCsv: String,
     val intervalKind: String = IntervalKind.SERVICE.name,
     val notes: String = "",
-    val isHistoricalTest: Boolean = false
+    val isHistoricalTest: Boolean = false,
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): ExplicitForecast = ExplicitForecast(
         id = id,
@@ -162,15 +189,19 @@ data class ExplicitForecastEntity(
     )
 
     companion object {
-        fun fromDomain(model: ExplicitForecast): ExplicitForecastEntity = ExplicitForecastEntity(
+        fun fromDomain(
+            model: ExplicitForecast,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): ExplicitForecastEntity = ExplicitForecastEntity(
             id = model.id,
             dateEpochDay = model.dateEpochDay,
             startMinuteOfDay = model.startMinuteOfDay,
             endMinuteOfDay = model.endMinuteOfDay,
-            circuitCodesCsv = model.circuitCodes.joinToString(",") { it.trim().uppercase() },
+            circuitCodesCsv = model.circuitCodes.map { it.trim().uppercase() }.filter { it.isNotEmpty() }.joinToString(","),
             intervalKind = model.intervalKind.name,
             notes = model.notes,
-            isHistoricalTest = model.isHistoricalTest
+            isHistoricalTest = model.isHistoricalTest,
+            dataOrigin = origin.name
         )
     }
 }
@@ -187,7 +218,8 @@ data class ManualExceptionEntity(
     val endMinuteOfDay: Int,
     val hasService: Boolean,
     val reason: String = "",
-    val endDateEpochDay: Long? = null
+    val endDateEpochDay: Long? = null,
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): ManualException = ManualException(
         id = id,
@@ -201,7 +233,10 @@ data class ManualExceptionEntity(
     )
 
     companion object {
-        fun fromDomain(model: ManualException): ManualExceptionEntity = ManualExceptionEntity(
+        fun fromDomain(
+            model: ManualException,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): ManualExceptionEntity = ManualExceptionEntity(
             id = model.id,
             circuitCode = model.circuitCode.trim().uppercase(),
             dateEpochDay = model.dateEpochDay,
@@ -209,7 +244,8 @@ data class ManualExceptionEntity(
             endMinuteOfDay = model.endMinuteOfDay,
             hasService = model.hasService,
             reason = model.reason,
-            endDateEpochDay = model.endDateEpochDay
+            endDateEpochDay = model.endDateEpochDay,
+            dataOrigin = origin.name
         )
     }
 }
@@ -224,7 +260,8 @@ data class CircuitRelationEntity(
     val targetCircuitCode: String,
     val relationType: String = RelationType.INFORMATIVA.name,
     val syncRuleEnabled: Boolean = false,
-    val notes: String = ""
+    val notes: String = "",
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): CircuitRelation = CircuitRelation(
         id = id,
@@ -236,13 +273,17 @@ data class CircuitRelationEntity(
     )
 
     companion object {
-        fun fromDomain(model: CircuitRelation): CircuitRelationEntity = CircuitRelationEntity(
+        fun fromDomain(
+            model: CircuitRelation,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): CircuitRelationEntity = CircuitRelationEntity(
             id = model.id,
             sourceCircuitCode = model.sourceCircuitCode.trim().uppercase(),
             targetCircuitCode = model.targetCircuitCode.trim().uppercase(),
             relationType = model.relationType.name,
             syncRuleEnabled = model.syncRuleEnabled,
-            notes = model.notes
+            notes = model.notes,
+            dataOrigin = origin.name
         )
     }
 }
@@ -264,7 +305,8 @@ data class RotationCycleEntity(
     val outageDurationMinutes: Int = 720,
     val referenceEpochMillis: Long,
     val orderedGroupIdsCsv: String = "",
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val dataOrigin: String = RecordOrigin.LOCAL.name
 ) {
     fun toDomain(): com.example.domain.model.RotationCycle =
         com.example.domain.model.RotationCycle(
@@ -281,7 +323,10 @@ data class RotationCycleEntity(
         )
 
     companion object {
-        fun fromDomain(model: com.example.domain.model.RotationCycle): RotationCycleEntity =
+        fun fromDomain(
+            model: com.example.domain.model.RotationCycle,
+            origin: RecordOrigin = RecordOrigin.LOCAL
+        ): RotationCycleEntity =
             RotationCycleEntity(
                 id = model.id,
                 name = model.name,
@@ -289,8 +334,9 @@ data class RotationCycleEntity(
                 serviceDurationMinutes = model.serviceDurationMinutes,
                 outageDurationMinutes = model.outageDurationMinutes,
                 referenceEpochMillis = model.referenceEpochMillis,
-                orderedGroupIdsCsv = model.orderedGroupIds.joinToString(","),
-                isActive = model.isActive
+                orderedGroupIdsCsv = model.orderedGroupIds.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(","),
+                isActive = model.isActive,
+                dataOrigin = origin.name
             )
     }
 }

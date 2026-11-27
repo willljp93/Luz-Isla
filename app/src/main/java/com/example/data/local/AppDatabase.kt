@@ -5,7 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.domain.model.ScheduleType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,8 +23,8 @@ import kotlinx.coroutines.launch
         ConfigBackupEntity::class,
         RotationCycleEntity::class
     ],
-    version = 4,
-    exportSchema = false
+    version = 6,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun circuitDao(): CircuitDao
@@ -60,17 +62,164 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("DELETE FROM `schedule_groups` WHERE `id` LIKE 'grp_ejemplo_%'")
-                db.execSQL("DELETE FROM `rotation_cycles` WHERE `id` = 'cycle_ejemplo_4_12'")
-                db.execSQL("DELETE FROM `explicit_forecasts` WHERE `isHistoricalTest` = 1")
-                db.execSQL("DELETE FROM `circuit_relations` WHERE `id` = 'rel_a080_a060'")
-                db.execSQL("DELETE FROM `circuits` WHERE `code` IN ('A010', 'A330', 'A340')")
+                // Intencionalmente sin cambios destructivos:
+                // preservar todos los circuitos, grupos, ciclos, relaciones y pronósticos
+                // existentes del usuario sin eliminar registros por código o identificador.
             }
         }
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `manual_exceptions` ADD COLUMN `endDateEpochDay` INTEGER")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Eliminar reglas fijas, excepciones y relaciones huérfanas de circuitos inexistentes
+                db.execSQL(
+                    """
+                    DELETE FROM `fixed_schedule_rules`
+                    WHERE UPPER(TRIM(`circuitCode`)) NOT IN (
+                        SELECT UPPER(TRIM(`code`)) FROM `circuits`
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    DELETE FROM `manual_exceptions`
+                    WHERE UPPER(TRIM(`circuitCode`)) NOT IN (
+                        SELECT UPPER(TRIM(`code`)) FROM `circuits`
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    DELETE FROM `circuit_relations`
+                    WHERE UPPER(TRIM(`sourceCircuitCode`)) NOT IN (
+                        SELECT UPPER(TRIM(`code`)) FROM `circuits`
+                    )
+                    OR UPPER(TRIM(`targetCircuitCode`)) NOT IN (
+                        SELECT UPPER(TRIM(`code`)) FROM `circuits`
+                    )
+                    """.trimIndent()
+                )
+
+                // 2. Reparar circuitos cuyo grupo ya no existe o están en ROTATING sin groupId válido
+                val customType = ScheduleType.CUSTOM.name
+                val rotatingType = ScheduleType.ROTATING.name
+                db.execSQL(
+                    """
+                    UPDATE `circuits`
+                    SET `groupId` = NULL,
+                        `scheduleType` = ?
+                    WHERE `scheduleType` = ?
+                      AND (
+                          `groupId` IS NULL
+                          OR TRIM(`groupId`) = ''
+                          OR TRIM(`groupId`) NOT IN (SELECT TRIM(`id`) FROM `schedule_groups`)
+                      )
+                    """.trimIndent(),
+                    arrayOf<Any?>(customType, rotatingType)
+                )
+                db.execSQL(
+                    """
+                    UPDATE `circuits`
+                    SET `groupId` = NULL
+                    WHERE `scheduleType` != ?
+                      AND `groupId` IS NOT NULL
+                      AND (
+                          TRIM(`groupId`) = ''
+                          OR TRIM(`groupId`) NOT IN (SELECT TRIM(`id`) FROM `schedule_groups`)
+                      )
+                    """.trimIndent(),
+                    arrayOf<Any?>(rotatingType)
+                )
+
+                // 3. Limpiar códigos de circuitos inexistentes en explicit_forecasts
+                val validCircuitCodes = mutableSetOf<String>()
+                db.query("SELECT UPPER(TRIM(`code`)) FROM `circuits`").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val code = cursor.getString(0)
+                        if (!code.isNullOrBlank()) {
+                            validCircuitCodes.add(code)
+                        }
+                    }
+                }
+                val forecastsToDelete = mutableListOf<String>()
+                val forecastsToUpdate = mutableListOf<Pair<String, String>>()
+                db.query("SELECT `id`, `circuitCodesCsv` FROM `explicit_forecasts`").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0) ?: continue
+                        val rawCsv = cursor.getString(1).orEmpty()
+                        val rawTokens = rawCsv.split(",")
+                            .map { it.trim().uppercase() }
+                            .filter { it.isNotEmpty() }
+                        val keptTokens = rawTokens.filter { it in validCircuitCodes }
+                        if (keptTokens.isEmpty()) {
+                            forecastsToDelete.add(id)
+                        } else {
+                            val updatedCsv = keptTokens.joinToString(",")
+                            if (keptTokens.size != rawTokens.size || updatedCsv != rawCsv) {
+                                forecastsToUpdate.add(id to updatedCsv)
+                            }
+                        }
+                    }
+                }
+                forecastsToDelete.forEach { id ->
+                    db.execSQL("DELETE FROM `explicit_forecasts` WHERE `id` = ?", arrayOf<Any?>(id))
+                }
+                forecastsToUpdate.forEach { (id, updatedCsv) ->
+                    db.execSQL(
+                        "UPDATE `explicit_forecasts` SET `circuitCodesCsv` = ? WHERE `id` = ?",
+                        arrayOf<Any?>(updatedCsv, id)
+                    )
+                }
+
+                // 4. Limpiar grupos inexistentes en rotation_cycles
+                val validGroupIds = mutableSetOf<String>()
+                db.query("SELECT TRIM(`id`) FROM `schedule_groups`").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0)
+                        if (!id.isNullOrBlank()) {
+                            validGroupIds.add(id)
+                        }
+                    }
+                }
+                val cyclesToUpdate = mutableListOf<Pair<String, String>>()
+                db.query("SELECT `id`, `orderedGroupIdsCsv` FROM `rotation_cycles`").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getString(0) ?: continue
+                        val rawCsv = cursor.getString(1).orEmpty()
+                        val rawTokens = rawCsv.split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                        val keptTokens = rawTokens.filter { it in validGroupIds }
+                        val updatedCsv = keptTokens.joinToString(",")
+                        if (keptTokens.size != rawTokens.size || updatedCsv != rawCsv) {
+                            cyclesToUpdate.add(id to updatedCsv)
+                        }
+                    }
+                }
+                cyclesToUpdate.forEach { (id, updatedCsv) ->
+                    db.execSQL(
+                        "UPDATE `rotation_cycles` SET `orderedGroupIdsCsv` = ? WHERE `id` = ?",
+                        arrayOf<Any?>(updatedCsv, id)
+                    )
+                }
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val legacy = RecordOrigin.LEGACY.name
+                db.execSQL("ALTER TABLE `circuits` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `schedule_groups` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `fixed_schedule_rules` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `explicit_forecasts` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `manual_exceptions` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `circuit_relations` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
+                db.execSQL("ALTER TABLE `rotation_cycles` ADD COLUMN `dataOrigin` TEXT NOT NULL DEFAULT '$legacy'")
             }
         }
 
@@ -86,7 +235,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "luz_isla.db"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -99,40 +248,23 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         suspend fun seedIfEmpty(database: AppDatabase) {
-            val now = System.currentTimeMillis()
-            val existingCircuits = database.circuitDao().getAllOnce()
-            if (existingCircuits.isEmpty()) {
-                database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
-                database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
-                database.circuitDao().upsertAll(SeedDataProvider.initialCircuits(now))
-                database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
-                return
-            }
-
-            val hasCurrentGroups = database.scheduleGroupDao().getAllOnce().any { it.id == "grp_g1" }
-            val hasCurrentCycle = database.rotationCycleDao().getAllOnce().any { it.id == "cycle_12x4" }
-            if (!hasCurrentGroups && !hasCurrentCycle) {
-                val existingByCode = existingCircuits.associateBy { it.code.uppercase() }
-                val mergedCircuits = SeedDataProvider.initialCircuits(now).map { seed ->
-                    val local = existingByCode[seed.code.uppercase()]
-                    if (local != null) {
-                        seed.copy(
-                            customName = local.customName.ifBlank { seed.customName },
-                            comment = local.comment.ifBlank { seed.comment },
-                            isActive = local.isActive,
-                            isFavorite = local.isFavorite,
-                            isPrimaryHome = local.isPrimaryHome,
-                            createdAt = local.createdAt.takeIf { it > 0L } ?: now,
-                            updatedAt = now
-                        )
-                    } else {
-                        seed
-                    }
+            database.withTransaction {
+                val existingCircuits = database.circuitDao().getAllOnce()
+                val existingGroups = database.scheduleGroupDao().getAllOnce()
+                val existingCycles = database.rotationCycleDao().getAllOnce()
+                val existingFixedRules = database.fixedScheduleRuleDao().getAllOnce()
+                if (
+                    existingCircuits.isEmpty() &&
+                    existingGroups.isEmpty() &&
+                    existingCycles.isEmpty() &&
+                    existingFixedRules.isEmpty()
+                ) {
+                    val now = System.currentTimeMillis()
+                    database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
+                    database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
+                    database.circuitDao().upsertAll(SeedDataProvider.initialCircuits(now))
+                    database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
                 }
-                database.scheduleGroupDao().upsertAll(SeedDataProvider.initialGroups())
-                database.rotationCycleDao().upsertAll(SeedDataProvider.initialCycles())
-                database.circuitDao().upsertAll(mergedCircuits)
-                database.fixedScheduleRuleDao().upsertAll(SeedDataProvider.initialFixedRules())
             }
         }
     }

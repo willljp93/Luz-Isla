@@ -122,5 +122,7 @@ class SettingsTabsUiTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("settings_tab_notifications_app").assertIsSelected()
         composeRule.onNodeWithText("Notificaciones locales").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_notification_scope_card").assertExists()
+        composeRule.onNodeWithTag("settings_notification_battery_note").assertExists()
     }
 }

@@ -79,13 +79,13 @@ val LuzIslaTypography = Typography(
     bodySmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp
+        fontSize = 12.5.sp,
+        lineHeight = 18.sp
     ),
     labelLarge = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
+        fontSize = 13.5.sp,
         lineHeight = 18.sp
     ),
     labelMedium = TextStyle(
@@ -97,7 +97,7 @@ val LuzIslaTypography = Typography(
     labelSmall = TextStyle(
         fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 14.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp
     )
 )

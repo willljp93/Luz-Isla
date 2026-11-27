@@ -39,6 +39,7 @@ enum class HomeFilter(val label: String) {
 }
 
 data class HomeUiState(
+    val isLoading: Boolean = true,
     val nowMillis: Long = System.currentTimeMillis(),
     val lastUpdateMillis: Long = 0L,
     val searchQuery: String = "",
@@ -54,17 +55,22 @@ data class HomeUiState(
     val dynamicLauncherIconEnabled: Boolean = false,
     val centerTimelineOnNow: Boolean = false,
     val primaryHomeState: ScheduledState? = null,
+    val primaryHomeEvaluation: CircuitStatusEvaluation? = null,
     val snapshot: ScheduleSnapshot = ScheduleSnapshot(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
     val evaluations: List<CircuitStatusEvaluation> = emptyList(),
+    val totalActiveCount: Int = 0,
     val totalFavoritesCount: Int = 0,
     val totalServiceCount: Int = 0,
     val totalOutageCount: Int = 0,
     val totalUnknownCount: Int = 0,
+    val syncStatusMessage: String = "",
+    val hasSyncError: Boolean = false,
     val selectedDetailCode: String? = null
 ) {
     val selectedEvaluation: CircuitStatusEvaluation?
         get() = selectedDetailCode?.let { code ->
             evaluations.firstOrNull { it.circuit.code.equals(code, ignoreCase = true) }
+                ?: primaryHomeEvaluation?.takeIf { it.circuit.code.equals(code, ignoreCase = true) }
         }
 }
 
@@ -172,7 +178,19 @@ class HomeViewModel(
             zoneId = zoneId
         )
 
+        val rawSyncMsg = prefs.lastSyncStatus.trim()
+        val lowerSync = rawSyncMsg.lowercase()
+        val isSyncProblem = lowerSync.contains("error") ||
+            lowerSync.contains("fall") ||
+            lowerSync.contains("rechaz") ||
+            lowerSync.contains("sin conexión") ||
+            lowerSync.contains("sin internet") ||
+            lowerSync.contains("no se pudo") ||
+            lowerSync.contains("inválid") ||
+            lowerSync.contains("tiempo de espera")
+
         HomeUiState(
+            isLoading = false,
             nowMillis = nowMillis,
             lastUpdateMillis = prefs.lastForecastUpdateEpochMillis,
             searchQuery = query,
@@ -188,12 +206,16 @@ class HomeViewModel(
             dynamicLauncherIconEnabled = prefs.dynamicLauncherIconEnabled,
             centerTimelineOnNow = prefs.centerTimelineOnNow,
             primaryHomeState = primaryState,
+            primaryHomeEvaluation = primaryHomeEval,
             snapshot = snapshot,
             evaluations = filtered,
+            totalActiveCount = activeEvaluations.size,
             totalFavoritesCount = favoritesCount,
             totalServiceCount = serviceCount,
             totalOutageCount = outageCount,
             totalUnknownCount = unknownCount,
+            syncStatusMessage = rawSyncMsg,
+            hasSyncError = isSyncProblem,
             selectedDetailCode = detailCode
         )
     }.stateIn(
