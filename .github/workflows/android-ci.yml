@@ -28,18 +28,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@3a331eac7f41f3d65608f60baf793a3d1b95c02b # v4.5.0
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@df7063006c7eb00ce1c169b88e7de453abe1af20 # v4.3.0
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
@@ -264,7 +264,7 @@ jobs:
             "${{ steps.pkg_id.outputs.app_id }}"
 
       - name: Upload APK Artifacts
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4800 # v4.4.0
+        uses: actions/upload-artifact@v4
         with:
           name: luz-isla-apks
           path: release-apks/
@@ -278,10 +278,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
       - name: Download APK Artifacts
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372680f708b # v4.1.8
+        uses: actions/download-artifact@v4
         with:
           name: luz-isla-apks
           path: release-apks/
@@ -372,7 +372,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@c95fe1489396fe7a9eb87c4af00cd518061314fb # v2.2.1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.build-and-test.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
@@ -385,11 +385,13 @@ jobs:
             release-apks/*.txt
 
       - name: Auto-sync version.properties for Next Cycle
-        if: github.ref_name == 'main' || github.ref_name == 'master'
+        if: github.ref_type == 'branch' && (github.ref_name == 'main' || github.ref_name == 'master')
+        continue-on-error: true
         run: |
           python3 - <<'PY'
           import os
           import re
+          import subprocess
 
           props_path = "version.properties"
           if os.path.exists(props_path):
@@ -405,9 +407,12 @@ jobs:
                       f.write(new_content)
                   print(f"Bumped APP_VERSION_BUILD from {current_build} to {next_build} in {props_path}")
 
-                  os.system("git config user.name 'github-actions[bot]'")
-                  os.system("git config user.email 'github-actions[bot]@users.noreply.github.com'")
-                  os.system("git add version.properties")
-                  os.system(f"git commit -m 'chore: bump version.properties to build {next_build} [skip ci]' || true")
-                  os.system("git push origin HEAD:${{ github.ref_name }} || true")
+                  ref_name = os.environ.get("GITHUB_REF_NAME", "main")
+                  subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=False)
+                  subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], check=False)
+                  subprocess.run(["git", "add", "version.properties"], check=False)
+                  res_commit = subprocess.run(["git", "commit", "-m", f"chore: bump version.properties to build {next_build} [skip ci]"], capture_output=True, text=True, check=False)
+                  if res_commit.returncode == 0:
+                      res_push = subprocess.run(["git", "push", "origin", f"HEAD:{ref_name}"], capture_output=True, text=True, check=False)
+                      print(f"Git push result: {res_push.returncode}, stdout: {res_push.stdout}, stderr: {res_push.stderr}")
           PY
