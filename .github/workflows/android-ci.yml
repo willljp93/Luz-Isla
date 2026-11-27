@@ -28,18 +28,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@3a331eac7f41f3d65608f60baf793a3d1b95c02b # v4.5.0
         with:
           java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@df7063006c7eb00ce1c169b88e7de453abe1af20 # v4.3.0
         with:
           gradle-version: '9.3.1'
 
@@ -77,8 +77,8 @@ jobs:
                           props[k.strip()] = v.strip()
               y = int(props.get("APP_VERSION_YEAR", "2026"))
               m = int(props.get("APP_VERSION_MONTH", "11"))
-              d = int(props.get("APP_VERSION_DAY", "26"))
-              b = int(props.get("APP_VERSION_BUILD", "1"))
+              d = int(props.get("APP_VERSION_DAY", "27"))
+              b = int(props.get("APP_VERSION_BUILD", "4"))
               return y, m, d, max(1, min(99, b))
 
           event_name = os.environ.get("GITHUB_EVENT_NAME", "")
@@ -204,7 +204,7 @@ jobs:
 
       - name: Run Unit & Robolectric Tests
         run: |
-          gradle :app:testDebugUnitTest \
+          ./gradlew :app:testDebugUnitTest \
             -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
             -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
 
@@ -218,13 +218,13 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
             export KEYSTORE_PATH="$PWD/my-upload-key.jks"
-            gradle :app:assembleRelease -PenableAbiSplits=true \
+            ./gradlew :app:assembleRelease -PenableAbiSplits=true \
               -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
               -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
             echo "build_variant=release" >> "$GITHUB_OUTPUT"
             echo "apk_dir=app/build/outputs/apk/release" >> "$GITHUB_OUTPUT"
           else
-            gradle :app:assembleDebug -PenableAbiSplits=true \
+            ./gradlew :app:assembleDebug -PenableAbiSplits=true \
               -PoverrideVersionName="${{ steps.app_version.outputs.version_name }}" \
               -PoverrideVersionCode="${{ steps.app_version.outputs.version_code }}"
             echo "build_variant=debug" >> "$GITHUB_OUTPUT"
@@ -255,34 +255,16 @@ jobs:
           (cd release-apks && sha256sum *.apk > "LuzIsla-v${VNAME}-sha256.txt")
           ls -lh release-apks
 
-      - name: Verify APK Version Metadata
+      - name: Verify APK Internal Metadata (aapt)
         run: |
-          python3 - <<'PY'
-          import os
-          import sys
-
-          expected_version_name = "${{ steps.app_version.outputs.version_name }}"
-          expected_version_code = "${{ steps.app_version.outputs.version_code }}"
-          apk_dir = "release-apks"
-
-          print(f"Verifying staged APKs in {apk_dir} for versionName={expected_version_name}, versionCode={expected_version_code}")
-          
-          apks = [f for f in os.listdir(apk_dir) if f.endswith(".apk")]
-          if not apks:
-              print("::error::No APK files found in release-apks directory!")
-              sys.exit(1)
-
-          for apk in apks:
-              if expected_version_name not in apk:
-                  print(f"::error::APK filename {apk} does not contain expected version name {expected_version_name}")
-                  sys.exit(1)
-              print(f"Verified staged APK filename: {apk}")
-
-          print("APK version metadata verification passed successfully.")
-          PY
+          python3 scripts/verify_apk_metadata.py \
+            release-apks \
+            "${{ steps.app_version.outputs.version_name }}" \
+            "${{ steps.app_version.outputs.version_code }}" \
+            "${{ steps.pkg_id.outputs.app_id }}"
 
       - name: Upload APK Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4800 # v4.4.0
         with:
           name: luz-isla-apks
           path: release-apks/
@@ -296,10 +278,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Download APK Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372680f708b # v4.1.8
         with:
           name: luz-isla-apks
           path: release-apks/
@@ -390,7 +372,7 @@ jobs:
           fi
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe7a9eb87c4af00cd518061314fb # v2.2.1
         with:
           tag_name: ${{ needs.build-and-test.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
@@ -401,3 +383,31 @@ jobs:
           files: |
             release-apks/*.apk
             release-apks/*.txt
+
+      - name: Auto-sync version.properties for Next Cycle
+        if: github.ref_name == 'main' || github.ref_name == 'master'
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          props_path = "version.properties"
+          if os.path.exists(props_path):
+              with open(props_path, "r", encoding="utf-8") as f:
+                  content = f.read()
+
+              m_build = re.search(r"APP_VERSION_BUILD=(\d+)", content)
+              if m_build:
+                  current_build = int(m_build.group(1))
+                  next_build = current_build + 1
+                  new_content = content.replace(f"APP_VERSION_BUILD={current_build}", f"APP_VERSION_BUILD={next_build}")
+                  with open(props_path, "w", encoding="utf-8") as f:
+                      f.write(new_content)
+                  print(f"Bumped APP_VERSION_BUILD from {current_build} to {next_build} in {props_path}")
+
+                  os.system("git config user.name 'github-actions[bot]'")
+                  os.system("git config user.email 'github-actions[bot]@users.noreply.github.com'")
+                  os.system("git add version.properties")
+                  os.system(f"git commit -m 'chore: bump version.properties to build {next_build} [skip ci]' || true")
+                  os.system("git push origin HEAD:${{ github.ref_name }} || true")
+          PY
