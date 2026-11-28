@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timeline
@@ -56,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -65,7 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.Circuit
-import com.example.ui.components.CenteredScrollableChipRow
+import com.example.ui.components.SingleLineScrollableRow
 import com.example.ui.components.Continuous3DTickerTimeline
 import com.example.ui.components.ScreenLoadingCard
 import com.example.ui.components.StateNoticeCard
@@ -263,7 +263,7 @@ fun CalendarScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            CenteredScrollableChipRow(spacing = 6.dp) {
+                            SingleLineScrollableRow(spacing = 6.dp) {
                                 CalendarViewMode.entries.forEach { mode ->
                                     val modeIcon = when (mode) {
                                         CalendarViewMode.DAILY_COMPARATIVE -> Icons.AutoMirrored.Filled.ViewList
@@ -299,19 +299,91 @@ fun CalendarScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.SemiBold
                                 )
-                                val visibleFilters = CalendarCircuitFilter.entries.filter { filter ->
+                                val allSelected = state.selectedFilter == CalendarCircuitFilter.ALL
+                                val favSelected = state.selectedFilter == CalendarCircuitFilter.FAVORITES
+                                val starYellow = Color(0xFFFFC107)
+
+                                val statusFilters = listOf(
+                                    CalendarCircuitFilter.WITH_SERVICE,
+                                    CalendarCircuitFilter.OUTAGE,
+                                    CalendarCircuitFilter.UNKNOWN
+                                ).filter { filter ->
                                     val count = state.filterCounts[filter] ?: 0
-                                    filter == CalendarCircuitFilter.ALL || state.selectedFilter == filter || count > 0
+                                    if (filter == CalendarCircuitFilter.UNKNOWN) {
+                                        count > 0
+                                    } else {
+                                        state.selectedFilter == filter || count > 0
+                                    }
                                 }
-                                CenteredScrollableChipRow(spacing = 6.dp) {
-                                    visibleFilters.forEach { filter ->
+
+                                SingleLineScrollableRow(spacing = 6.dp) {
+                                    // Interruptor Todos | Favoritos, de solo icono
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceContainer,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                        modifier = Modifier.defaultMinSize(minHeight = 44.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(3.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(9.dp),
+                                                color = if (allSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                                modifier = Modifier
+                                                    .defaultMinSize(minWidth = 38.dp, minHeight = 36.dp)
+                                                    .clip(RoundedCornerShape(9.dp))
+                                                    .clickable { viewModel.selectFilter(CalendarCircuitFilter.ALL) }
+                                                    .testTag("calendar_filter_all")
+                                            ) {
+                                                Box(
+                                                    contentAlignment = Alignment.Center,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Apps,
+                                                        contentDescription = "Todos",
+                                                        tint = if (allSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(3.dp))
+
+                                            Surface(
+                                                shape = RoundedCornerShape(9.dp),
+                                                color = if (favSelected) starYellow.copy(alpha = 0.22f) else Color.Transparent,
+                                                border = if (favSelected) BorderStroke(1.dp, starYellow.copy(alpha = 0.65f)) else null,
+                                                modifier = Modifier
+                                                    .defaultMinSize(minWidth = 38.dp, minHeight = 36.dp)
+                                                    .clip(RoundedCornerShape(9.dp))
+                                                    .clickable { viewModel.selectFilter(CalendarCircuitFilter.FAVORITES) }
+                                                    .testTag("calendar_filter_favorites")
+                                            ) {
+                                                Box(
+                                                    contentAlignment = Alignment.Center,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Star,
+                                                        contentDescription = "Mis favoritos",
+                                                        tint = if (favSelected) starYellow else starYellow.copy(alpha = 0.85f),
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Chips de estado: Con servicio, Sin servicio, Sin info
+                                    statusFilters.forEach { filter ->
                                         val filterIcon = when (filter) {
-                                            CalendarCircuitFilter.ALL -> Icons.Filled.Apps
-                                            CalendarCircuitFilter.FAVORITES -> Icons.Filled.Star
                                             CalendarCircuitFilter.WITH_SERVICE -> Icons.Filled.Bolt
                                             CalendarCircuitFilter.OUTAGE -> Icons.Filled.PowerOff
                                             CalendarCircuitFilter.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
-                                            CalendarCircuitFilter.FIXED -> Icons.Filled.LockClock
+                                            else -> Icons.Filled.Apps
                                         }
                                         FilterChip(
                                             selected = state.selectedFilter == filter,
@@ -325,7 +397,7 @@ fun CalendarScreen(
                                             },
                                             label = { Text(filter.label, maxLines = 1, softWrap = false) },
                                             modifier = Modifier
-                                                .defaultMinSize(minHeight = 48.dp)
+                                                .defaultMinSize(minHeight = 44.dp)
                                                 .testTag("calendar_filter_${filter.name.lowercase()}")
                                         )
                                     }

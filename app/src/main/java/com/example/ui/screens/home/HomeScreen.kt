@@ -60,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -78,7 +79,7 @@ import com.example.domain.engine.ScheduleEngine
 import com.example.domain.model.CircuitStatusEvaluation
 import com.example.domain.model.ScheduledState
 import com.example.domain.version.AppVersionConfig
-import com.example.ui.components.CenteredScrollableChipRow
+import com.example.ui.components.SingleLineScrollableRow
 import com.example.ui.components.CircuitDetailBottomSheet
 import com.example.ui.components.CompactSearchBar
 import com.example.ui.components.DayNightAmbientScreenBrush
@@ -340,18 +341,20 @@ fun HomeScreen(
                                 },
                                 modifier = Modifier.weight(1f)
                             )
-                            SummaryCountPill(
-                                label = "Sin info",
-                                count = state.totalUnknownCount,
-                                icon = Icons.AutoMirrored.Filled.HelpOutline,
-                                iconTint = Color(0xFFE2E8F0),
-                                selected = state.selectedFilter == HomeFilter.UNKNOWN,
-                                onClick = {
-                                    val next = if (state.selectedFilter == HomeFilter.UNKNOWN) HomeFilter.ALL else HomeFilter.UNKNOWN
-                                    viewModel.selectFilter(next)
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                            if (state.totalUnknownCount > 0) {
+                                SummaryCountPill(
+                                    label = "Sin info",
+                                    count = state.totalUnknownCount,
+                                    icon = Icons.AutoMirrored.Filled.HelpOutline,
+                                    iconTint = Color(0xFFE2E8F0),
+                                    selected = state.selectedFilter == HomeFilter.UNKNOWN,
+                                    onClick = {
+                                        val next = if (state.selectedFilter == HomeFilter.UNKNOWN) HomeFilter.ALL else HomeFilter.UNKNOWN
+                                        viewModel.selectFilter(next)
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
                 }
@@ -419,40 +422,82 @@ fun HomeScreen(
                             }
                         }
 
-                        val visibleFilters = HomeFilter.entries.filter { filter ->
-                            val count = when (filter) {
-                                HomeFilter.ALL -> 1
-                                HomeFilter.FAVORITES -> state.totalFavoritesCount
-                                HomeFilter.WITH_SERVICE -> state.totalServiceCount
-                                HomeFilter.OUTAGE -> state.totalOutageCount
-                                HomeFilter.UNKNOWN -> state.totalUnknownCount
-                            }
-                            filter == HomeFilter.ALL || state.selectedFilter == filter || count > 0
-                        }
-                        CenteredScrollableChipRow(spacing = 6.dp) {
-                            visibleFilters.forEach { filter ->
-                                val icon = when (filter) {
-                                    HomeFilter.ALL -> Icons.Filled.Apps
-                                    HomeFilter.FAVORITES -> Icons.Filled.Star
-                                    HomeFilter.WITH_SERVICE -> Icons.Filled.Bolt
-                                    HomeFilter.OUTAGE -> Icons.Filled.PowerOff
-                                    HomeFilter.UNKNOWN -> Icons.AutoMirrored.Filled.HelpOutline
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (state.selectedFilter == HomeFilter.FAVORITES) {
+                                    "Favoritos (${state.totalFavoritesCount})"
+                                } else {
+                                    "Todos (${state.totalActiveCount})"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+
+                            val allSelected = state.selectedFilter == HomeFilter.ALL
+                            val favSelected = state.selectedFilter == HomeFilter.FAVORITES
+                            val starYellow = Color(0xFFFFC107)
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(3.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(9.dp),
+                                        color = if (allSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 38.dp, minHeight = 36.dp)
+                                            .clip(RoundedCornerShape(9.dp))
+                                            .clickable { viewModel.selectFilter(HomeFilter.ALL) }
+                                            .testTag("home_filter_all")
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Apps,
+                                                contentDescription = "Todos",
+                                                tint = if (allSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(3.dp))
+
+                                    Surface(
+                                        shape = RoundedCornerShape(9.dp),
+                                        color = if (favSelected) starYellow.copy(alpha = 0.22f) else Color.Transparent,
+                                        border = if (favSelected) BorderStroke(1.dp, starYellow.copy(alpha = 0.65f)) else null,
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 38.dp, minHeight = 36.dp)
+                                            .clip(RoundedCornerShape(9.dp))
+                                            .clickable { viewModel.selectFilter(HomeFilter.FAVORITES) }
+                                            .testTag("home_filter_favorites")
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Star,
+                                                contentDescription = "Mis favoritos",
+                                                tint = if (favSelected) starYellow else starYellow.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
-                                FilterChip(
-                                    selected = state.selectedFilter == filter,
-                                    onClick = { viewModel.selectFilter(filter) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    },
-                                    label = { Text(filter.label, maxLines = 1, softWrap = false) },
-                                    modifier = Modifier
-                                        .defaultMinSize(minHeight = 48.dp)
-                                        .testTag("home_filter_${filter.name.lowercase()}")
-                                )
                             }
                         }
                     }

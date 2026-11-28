@@ -25,8 +25,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 enum class CalendarViewMode(val label: String) {
-    DAILY_COMPARATIVE("Circuitos 24h"),
-    WEEKLY_7_DAYS("7 días"),
+    DAILY_COMPARATIVE("Diario"),
+    WEEKLY_7_DAYS("Semanal"),
     BY_CIRCUIT("Detallado"),
     GROUPS("Grupos")
 }
@@ -36,8 +36,7 @@ enum class CalendarCircuitFilter(val label: String) {
     FAVORITES("Mis favoritos"),
     WITH_SERVICE("Con servicio"),
     OUTAGE("Sin servicio"),
-    UNKNOWN("Sin info"),
-    FIXED("Fijos")
+    UNKNOWN("Sin info")
 }
 
 data class CircuitTimelineRow(
@@ -133,7 +132,6 @@ class CalendarViewModel(
             return when (filter) {
                 CalendarCircuitFilter.ALL -> true
                 CalendarCircuitFilter.FAVORITES -> circuit.isFavorite || circuit.isPrimaryHome
-                CalendarCircuitFilter.FIXED -> circuit.scheduleType == ScheduleType.FIXED
                 CalendarCircuitFilter.WITH_SERVICE -> {
                     if (isToday) {
                         daySegs.firstOrNull { nowMillis in it.startMillis until it.endMillis }?.state == ScheduledState.SERVICE_SCHEDULED
@@ -163,8 +161,15 @@ class CalendarViewModel(
             activeCircuits.count { circuit -> matchesFilter(circuit, filter) }
         }
 
+        val effectiveFilter = if (controls.filter == CalendarCircuitFilter.UNKNOWN && (counts[CalendarCircuitFilter.UNKNOWN] ?: 0) == 0) {
+            selectedFilter.value = CalendarCircuitFilter.ALL
+            CalendarCircuitFilter.ALL
+        } else {
+            controls.filter
+        }
+
         val visibleCircuits = activeCircuits.filter { circuit ->
-            matchesFilter(circuit, controls.filter)
+            matchesFilter(circuit, effectiveFilter)
         }
 
         val pickerCircuits = visibleCircuits.ifEmpty { activeCircuits }

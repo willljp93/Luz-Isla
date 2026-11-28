@@ -135,6 +135,13 @@ class HomeViewModel(
         val outageCount = activeEvaluations.count { it.state == ScheduledState.OUTAGE_SCHEDULED }
         val unknownCount = activeEvaluations.count { it.state == ScheduledState.UNKNOWN }
 
+        val effectiveFilter = if (filter == HomeFilter.UNKNOWN && unknownCount == 0) {
+            selectedFilter.value = HomeFilter.ALL
+            HomeFilter.ALL
+        } else {
+            filter
+        }
+
         val primaryHomeEval = activeEvaluations.firstOrNull { it.circuit.isPrimaryHome }
         val primaryState = primaryHomeEval?.state
 
@@ -155,7 +162,7 @@ class HomeViewModel(
                     eval.circuit.customName.contains(query, ignoreCase = true) ||
                     eval.circuit.comment.contains(query, ignoreCase = true)
 
-                val matchesFilter = when (filter) {
+                val matchesFilter = when (effectiveFilter) {
                     HomeFilter.ALL -> true
                     HomeFilter.FAVORITES -> eval.circuit.isFavorite || eval.circuit.isPrimaryHome
                     HomeFilter.WITH_SERVICE -> eval.state == ScheduledState.SERVICE_SCHEDULED
